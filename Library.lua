@@ -109,6 +109,7 @@ local AutoMilitaryBaseRunning = false
 local SellFarmsRunning = false
 local AutoGatlingRunning = false
 local GatlingExecuted = false
+local AutoHackerRunning = false
 
 local MaxPathDistance = 300 -- default
 local MilMarker = nil
@@ -133,6 +134,7 @@ local DefaultSettings = {
     AutoSkip = false,
     AutoChain = false,
     AutoGatling = false,
+    AutoHacker = false,
     SupportCaravan = false,
     AutoDJ = false,
     AutoNecro = false,
@@ -1007,6 +1009,15 @@ local Autostrat = Window:Tab({Title = "Autostrat", Icon = "star"}) do
         Value = Globals.AutoDJ,
         Callback = function(v)
             SetSetting("AutoDJ", v)
+        end
+    })
+
+    Autostrat:Toggle({
+        Title = "Auto Hacker",
+        Desc = "Automatically clones your Gatling Gun.",
+        Value = Globals.AutoHacker,
+        Callback = function(v)
+            SetSetting("AutoHacker", v)
         end
     })
 
@@ -1977,7 +1988,7 @@ end
 
 Window:Line()
 
-local RecorderInit = loadstring(game:HttpGet("https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Sources/Recorder.lua"))()
+local RecorderInit = loadstring(game:HttpGet("https://raw.githubusercontent.com/avtryxz/auto-strat/refs/heads/Horse-fixing-again/Sources/Recorder.lua"))()
 RecorderInit({
     Window = Window,
     ReplicatedStorage = ReplicatedStorage,
@@ -3626,62 +3637,55 @@ local function StartAutoNecro()
         if not towersFolder then
             return list
         end
-        for _, rep in ipairs(towersFolder:GetDescendants()) do
-            if rep:IsA("Folder") and rep.Name == "TowerReplicator"
+        for _, tower in ipairs(towersFolder:GetChildren()) do
+            local rep = tower:FindFirstChild("TowerReplicator")
+            if rep and rep:IsA("Folder") 
             and rep:GetAttribute("Name") == "Necromancer"
             and rep:GetAttribute("OwnerId") == ownerId then
-                list[#list + 1] = rep.Parent
+                list[#list + 1] = tower
             end
         end
         return list
     end
 
-    local function pickMaxGraves(rep, graveStore, up)
-        local maxGraves = rep and rep:GetAttribute("Max_Graves")
-        if graveStore then
-            local gMax = graveStore:GetAttribute("Max_Graves")
-            if type(gMax) == "number" and gMax > 0 then
-                maxGraves = gMax
-            end
+    local function pickMaxGraves(rep)
+        local maxGraves = 0
+        local maxGraveLevel = 0
+        
+        local attributesFolder = rep and rep:FindFirstChild("Attributes")
+        if attributesFolder then
+            maxGraves = attributesFolder:GetAttribute("Max_Graves") or 0
+            maxGraveLevel = attributesFolder:GetAttribute("Max_Grave_Level") or 0
         end
-        if not maxGraves or maxGraves < 2 then
-            if up >= 4 then
-                maxGraves = 9
-            elseif up >= 2 then
-                maxGraves = 6
-            else
-                maxGraves = 3
-            end
-        end
-        return maxGraves
+        
+        return maxGraves, maxGraveLevel
     end
 
-    local function countGraves(graveStore)
+    local function countGraves(graveStore, expectedMaxLevel)
         if not graveStore then
-            return 0
+            return 0, 0
         end
         local cnt = 0
+        local maxedCnt = 0
+        
         for k, v in pairs(graveStore:GetAttributes()) do
             if type(k) == "string" and #k > 20 then
-                local isDestroy = false
-                if type(v) == "table" then
-                    for _, elem in pairs(v) do
-                        if tostring(elem) == "Destroy" then
-                            isDestroy = true
-                            break
-                        end
-                    end
-                elseif tostring(v):find("Destroy") then
-                    isDestroy = true
-                end
-                if isDestroy then
+                local strV = tostring(v)
+                
+                if string.find(strV, "Destroy") then
                     graveStore:SetAttribute(k, nil)
                 else
                     cnt += 1
+                    local graveLvlStr = string.match(strV, "(%d+)%]%s*$")
+                    local graveLvl = tonumber(graveLvlStr) or 1
+                    
+                    if graveLvl >= expectedMaxLevel then
+                        maxedCnt += 1
+                    end
                 end
             end
         end
-        return cnt
+        return cnt, maxedCnt
     end
 
     local function cleanAllGraves(list)
@@ -3689,7 +3693,8 @@ local function StartAutoNecro()
             local rep = necro and necro:FindFirstChild("TowerReplicator")
             local store = rep and rep:FindFirstChild("GraveStone")
             if store then
-                countGraves(store)
+                local _, maxGraveLevel = pickMaxGraves(rep)
+                countGraves(store, maxGraveLevel)
             end
         end
     end
@@ -3707,14 +3712,16 @@ local function StartAutoNecro()
                 local CurrentNecromancer = necromancer[idx]
                 local replicator = CurrentNecromancer:FindFirstChild("TowerReplicator")
 
-                local up = replicator and (replicator:GetAttribute("Upgrade") or 0) or 0
+                local up = replicator and (replicator:GetAttribute("Upgrade") or 0) or 0 
                 local graveStore = replicator and replicator:FindFirstChild("GraveStone")
-                local maxGraves = pickMaxGraves(replicator, graveStore, up)
-                local graveCount = countGraves(graveStore)
+                
+                local maxGraves, maxGraveLevel = pickMaxGraves(replicator)
+                local totalGraves, graveCount = countGraves(graveStore, maxGraveLevel)
+                
                 local debounce = (replicator and replicator:GetAttribute("AbilityDebounce")) or 5
                 local now = os.clock()
 
-                if maxGraves and graveCount >= maxGraves and (now - lastActivation >= debounce) then
+                if maxGraves > 0 and graveCount >= maxGraves and (now - lastActivation >= debounce) then
                     local response = RemoteFunc:InvokeServer(
                         "Troops",
                         "Abilities",
@@ -3871,6 +3878,122 @@ local function StartSellFarm()
     end)
 end
 
+local function StartAutoHacker()
+    if AutoHackerRunning or not Globals.AutoHacker then return end
+    AutoHackerRunning = true
+
+    local ownerId = game.Players.LocalPlayer.UserId
+    local hackerIndex = 1
+    local HackerLastFired = {} 
+
+    local function parsePosition(tower, replicator)
+        local rawPos = replicator:GetAttribute("Position")
+        if typeof(rawPos) == "Vector3" then
+            return rawPos
+        elseif type(rawPos) == "string" then
+            local parts = string.split(rawPos, ",")
+            if #parts >= 3 then
+                return Vector3.new(tonumber(parts[1]), tonumber(parts[2]), tonumber(parts[3]))
+            end
+        end
+        return tower:GetPivot().Position
+    end
+
+    task.spawn(function()
+        local wasHologramAliveLastFrame = false 
+
+        while Globals.AutoHacker do
+            local TowersFolder = workspace:FindFirstChild("Towers")
+            
+            if TowersFolder then
+                local originalGatling = nil
+                local gatlingPos = nil
+                local hackers = {}
+                
+                local hologramExists = false 
+
+                for _, tower in ipairs(TowersFolder:GetChildren()) do
+                    local replicator = tower:FindFirstChild("TowerReplicator")
+                    if replicator and replicator:GetAttribute("OwnerId") == ownerId then
+                        local name = replicator:GetAttribute("Name")
+                        local isHologram = replicator:GetAttribute("Hologram")
+                        
+                        if name == "Gatling Gun" then
+                            if isHologram == true then
+                                hologramExists = true
+                            else
+                                originalGatling = tower
+                                gatlingPos = parsePosition(tower, replicator)
+                            end
+                        elseif name == "Hacker" then
+                            local upgradeLevel = replicator:GetAttribute("Upgrade") or 0
+                            if upgradeLevel >= 3 then
+                                hackers[#hackers + 1] = tower
+                            end
+                        end
+                    end
+                end
+
+                if originalGatling and gatlingPos and #hackers > 0 then
+                    if hologramExists then
+                        if not wasHologramAliveLastFrame then
+                            wasHologramAliveLastFrame = true
+                        end
+                        task.wait(0.5)
+                    else
+                        if wasHologramAliveLastFrame then
+                            wasHologramAliveLastFrame = false
+                        end
+
+                        if hackerIndex > #hackers then hackerIndex = 1 end
+                        local currentHacker = hackers[hackerIndex]
+                        
+                        local lastFired = HackerLastFired[currentHacker] or 0
+                        local currentTime = os.clock()
+                        
+                        if currentTime - lastFired > 2 then
+                            
+                            local targetPos = Vector3.new(gatlingPos.X, gatlingPos.Y, gatlingPos.Z)
+                            
+                            local response = RemoteFunc:InvokeServer(
+                                "Troops",
+                                "Abilities",
+                                "Activate",
+                                {
+                                    Troop = currentHacker,
+                                    Name = "Hologram Tower",
+                                    Data = {
+                                        towerPosition = targetPos,
+                                        towerToClone = originalGatling
+                                    }
+                                }
+                            )
+
+                            if response == true or (type(response) == "table" and response.Success) or typeof(response) == "Instance" then
+                                HackerLastFired[currentHacker] = currentTime
+                                hackerIndex = hackerIndex + 1
+                                task.wait(0.1)
+                            else
+                                HackerLastFired[currentHacker] = currentTime
+                                hackerIndex = hackerIndex + 1
+                                task.wait(0.1)
+                            end
+                        else
+                            hackerIndex = hackerIndex + 1
+                            task.wait(0.1)
+                        end
+                    end
+                else
+                    task.wait(0.5)
+                end
+            else
+                task.wait(1)
+            end
+        end
+        AutoHackerRunning = false
+    end)
+end
+
 task.spawn(function()
     while true do
         if Globals.AutoPickups and not AutoPickupsRunning then
@@ -3919,6 +4042,10 @@ task.spawn(function()
 
         if Globals.AutoGatling and not AutoGatlingRunning then
             StartAutoGatling()
+        end
+
+        if Globals.AutoHacker and not AutoHackerRunning then
+            StartAutoHacker()
         end
 
         task.wait(1)

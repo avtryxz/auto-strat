@@ -449,6 +449,17 @@ return function(ctx)
         local a5 = args[5]
 
         if a1 == "Troops" and a2 == "Abilities" and a3 == "Activate" then
+            if type(a4) == "table" and a4.Name == "Hologram Tower" then
+                if Globals.AutoHacker then
+                    return 
+                end
+                if a4.Data == nil or (type(a4.Data) == "table" and next(a4.Data) == nil) then
+                    return
+                end
+            end
+        end
+
+        if a1 == "Troops" and a2 == "Abilities" and a3 == "Activate" then
             if type(a4) == "table" and type(a4.Name) == "string" then
                 local abilityName = a4.Name
                 if abilityName == "Call Of Arms" or abilityName == "Support Caravan" or abilityName == "Drop The Beat" or abilityName == "Raise The Dead" then
@@ -848,6 +859,10 @@ TDS:Mode("%s")%s
                 
                 local my_index = spawned_towers[tower]
                 if my_index then
+                    if tower:GetAttribute("Hologram") == true then
+                        spawned_towers[tower] = nil
+                        return
+                    end
                     record_action(string.format('TDS:Sell(%d)', my_index))
                     Recorder:Log("Sold Tower " .. my_index)
                     
