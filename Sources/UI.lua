@@ -220,32 +220,11 @@ do
 
 	local IconList = loadstring(game:HttpGet('https://raw.githubusercontent.com/DuxiiT/auto-strat/refs/heads/main/Sources/Icons.lua'))()
 	function gl(i)
-		local iconData = IconList.Icons[i]
-		if iconData then
-			local spriteSheet = IconList.Spritesheets[tostring(iconData.Image)]
-			if spriteSheet then
-				return {
-					Image = spriteSheet,
-					ImageRectSize = iconData.ImageRectSize,
-					ImageRectPosition = iconData.ImageRectPosition,
-				}
-			end
-		end
-		if type(i) == 'string' and not i:find('rbxassetid://') then
-			return {
-				Image = "rbxassetid://".. i,
-				ImageRectSize = Vector2.new(0, 0),
-				ImageRectPosition = Vector2.new(0, 0),
-			}
-		elseif type(i) == 'number' then
-			return {
-				Image = "rbxassetid://".. i,
-				ImageRectSize = Vector2.new(0, 0),
-				ImageRectPosition = Vector2.new(0, 0),
-			}
-		else
-			return i
-		end
+		return {
+			Image = "rbxthumb://type=Asset&id=12807408896&w=420&h=420",
+			ImageRectSize = Vector2.new(0, 0),
+			ImageRectPosition = Vector2.new(0, 0),
+		}
 	end
 	function tw(info)
 		return Tw:Create(info.v,TweenInfo.new(info.t, info.s, Enum.EasingDirection[info.d]),info.g)
@@ -349,6 +328,11 @@ do
 		t.InputChanged:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch then b = i end end)
 		U.InputChanged:Connect(function(i) if i == b and a then u(i) end end)
 	end
+	local discordPing = Instance.new("Sound")
+	discordPing.SoundId = "rbxassetid://5453349528"
+	discordPing.Volume = 1
+	discordPing.Parent = game:GetService("CoreGui")
+
 	function click(p)
 		local Click = Instance.new("TextButton")
 
@@ -364,7 +348,18 @@ do
 		Click.TextColor3 = Color3.fromRGB(0, 0, 0)
 		Click.TextSize = 14.000
 
+		Click.MouseButton1Click:Connect(function()
+			if discordPing and math.random() <= 0.35 then
+				discordPing:Play()
+			end
+		end)
+
 		return Click
+	end
+	function uwuify(str)
+		if type(str) ~= "string" or str == "" then return str end
+		local t = str:gsub("r", "w"):gsub("R", "W"):gsub("l", "w"):gsub("L", "W")
+		return t
 	end
 	function background(pl, t, d, i, ty)
 		local RealBackground = Instance.new("Frame")
@@ -423,7 +418,7 @@ do
 		TextLabel_1.Size = UDim2.new(1, 0,0, 14)
 		TextLabel_1.Font = Enum.Font.GothamBold
 		TextLabel_1.RichText = true
-		TextLabel_1.Text = tostring(d)
+		TextLabel_1.Text = uwuify(tostring(d))
 		TextLabel_1.TextColor3 = Color3.fromRGB(255,255,255)
 		TextLabel_1.TextSize = 10
 		TextLabel_1.TextTransparency = 0.699999988079071
@@ -443,7 +438,7 @@ do
 		TextLabel_2.Size = UDim2.new(1, 0,0, 14)
 		TextLabel_2.Font = Enum.Font.GothamBold
 		TextLabel_2.RichText = true
-		TextLabel_2.Text = tostring(t)
+		TextLabel_2.Text = uwuify(tostring(t))
 		TextLabel_2.TextColor3 = Color3.fromRGB(255,255,255)
 		TextLabel_2.TextSize = 12
 		TextLabel_2.TextWrapped = true
@@ -526,11 +521,11 @@ do
 		end
 
 		function f:SetTitle(vs)
-			TextLabel_2.Text = tostring(vs)
+			TextLabel_2.Text = uwuify(tostring(vs))
 		end
 
 		function f:SetDesc(vs)
-			TextLabel_1.Text = tostring(vs)
+			TextLabel_1.Text = uwuify(tostring(vs))
 			if vs and vs ~= "" then
 				TextLabel_1.Visible = true
 			else
@@ -929,7 +924,7 @@ do
 			TextLabel_1.BorderSizePixel = 0
 			TextLabel_1.Size = UDim2.new(1, 0,1, 0)
 			TextLabel_1.Font = Enum.Font.GothamBold
-			TextLabel_1.Text = text
+			TextLabel_1.Text = uwuify(text)
 			TextLabel_1.TextColor3 = Color3.fromRGB(255,255,255)
 			TextLabel_1.TextSize = 12
 			TextLabel_1.TextXAlignment = Enum.TextXAlignment.Left
@@ -1144,6 +1139,18 @@ function Library:Window(p)
 	Background_1.Size = UDim2.new(1, 0,1, 0)
 	Background_1.ClipsDescendants = true
 	Background_1.GroupTransparency = 1
+
+	local AprilFools = Instance.new("ImageLabel")
+	AprilFools.Name = "AprilFools"
+	AprilFools.Parent = Background_1
+	AprilFools.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	AprilFools.BackgroundTransparency = 1
+	AprilFools.Position = UDim2.new(0, 0, 0, 0)
+	AprilFools.Size = UDim2.new(1, 0, 1, 0)
+	AprilFools.Image = "rbxassetid://102485937210851"
+	AprilFools.ImageTransparency = 0
+	AprilFools.ScaleType = Enum.ScaleType.Stretch
+	AprilFools.ZIndex = -1
 
 	Shadow_1.Visible = true  
 	local CloseUIShadowRef = nil
@@ -1667,7 +1674,7 @@ function Library:Window(p)
 		Title_3.LayoutOrder = 1
 		Title_3.Size = UDim2.new(1, 0,1, 0)
 		Title_3.Font = Enum.Font.GothamBold
-		Title_3.Text = tostring(Title)
+		Title_3.Text = uwuify(tostring(Title))
 		Title_3.TextColor3 = Color3.fromRGB(255,255,255)
 		Title_3.TextSize = 11
 		Title_3.TextTransparency = 0.7
@@ -1965,7 +1972,7 @@ function Library:Window(p)
 			Section_1.BorderSizePixel = 0
 			Section_1.Size = UDim2.new(1, 0,1, 0)
 			Section_1.Font = Enum.Font.GothamBold
-			Section_1.Text = Title
+			Section_1.Text = uwuify(tostring(Title))
 			Section_1.TextColor3 = Color3.fromRGB(255,255,255)
 			Section_1.TextSize = 12
 			Section_1.TextXAlignment = Enum.TextXAlignment.Left
@@ -4231,7 +4238,7 @@ function Library:Window(p)
 			TextLabel_1.Size = UDim2.new(0.800000012, 0,1, 0)
 			TextLabel_1.Font = Enum.Font.GothamBold
 			TextLabel_1.PlaceholderColor3 = Color3.fromRGB(178,178,178)
-			TextLabel_1.PlaceholderText = Placeholder
+			TextLabel_1.PlaceholderText = uwuify(Placeholder)
 			TextLabel_1.RichText = true
 			TextLabel_1.Text = Value
 			TextLabel_1.TextColor3 = Color3.fromRGB(255,255,255)
@@ -4428,7 +4435,7 @@ function Library:Window(p)
 		Title_1.BorderSizePixel = 0
 		Title_1.Size = UDim2.new(1, 0,0, 0)
 		Title_1.Font = Enum.Font.GothamBold
-		Title_1.Text = tostring(Title)
+		Title_1.Text = uwuify(tostring(Title))
 		Title_1.TextColor3 = themes[IsTheme]['Text & Icon']
 		Title_1.TextSize = 12
 		Title_1.TextWrapped = true
@@ -4452,7 +4459,7 @@ function Library:Window(p)
 		Description_1.LayoutOrder = 2
 		Description_1.Size = UDim2.new(1, 0,0, 0)
 		Description_1.Font = Enum.Font.GothamBold
-		Description_1.Text = tostring(Desc)
+		Description_1.Text = uwuify(tostring(Desc))
 		Description_1.TextColor3 = themes[IsTheme]['Text & Icon']
 		Description_1.TextSize = 10
 		Description_1.TextTransparency = 0.5
@@ -4609,7 +4616,7 @@ function Library:Window(p)
 		TextLabel_1.Size = UDim2.new(0, 200,0, 30)
 		TextLabel_1.Font = Enum.Font.GothamBold
 		TextLabel_1.RichText = true
-		TextLabel_1.Text = tostring(Title)
+		TextLabel_1.Text = uwuify(tostring(Title))
 		TextLabel_1.TextColor3 = Color3.fromRGB(255,255,255)
 		TextLabel_1.TextSize = 20
 
@@ -4643,7 +4650,7 @@ function Library:Window(p)
 		TextLabel_2.BorderSizePixel = 0
 		TextLabel_2.Size = UDim2.new(1, 0,1, 0)
 		TextLabel_2.Font = Enum.Font.GothamBold
-		TextLabel_2.Text = TitleButton1
+		TextLabel_2.Text = uwuify(TitleButton1)
 		TextLabel_2.TextColor3 = themes[IsTheme]['Text & Icon']
 		TextLabel_2.TextSize = 14
 		TextLabel_2.TextXAlignment = Enum.TextXAlignment.Center
@@ -4673,7 +4680,7 @@ function Library:Window(p)
 		TextLabel_3.BorderSizePixel = 0
 		TextLabel_3.Size = UDim2.new(1, 0,1, 0)
 		TextLabel_3.Font = Enum.Font.GothamBold
-		TextLabel_3.Text = TitleButton2
+		TextLabel_3.Text = uwuify(TitleButton2)
 		TextLabel_3.TextColor3 = themes[IsTheme]['Text & Icon']
 		TextLabel_3.TextSize = 14
 		TextLabel_3.TextXAlignment = Enum.TextXAlignment.Center
@@ -4731,7 +4738,7 @@ function Library:Window(p)
 		SizeFrame.Name = "SizeFrame"
 		SizeFrame.Parent = Background_1
 		SizeFrame.BackgroundColor3 = Color3.fromRGB(0,0,0)
-		SizeFrame.BackgroundTransparency = 1
+		SizeFrame.BackgroundTransparency = 0
 		SizeFrame.BorderColor3 = Color3.fromRGB(0,0,0)
 		SizeFrame.BorderSizePixel = 0
 		SizeFrame.Size = UDim2.new(1, 0,1, 0)
@@ -4744,7 +4751,7 @@ function Library:Window(p)
 		ImageLabel_1.BorderSizePixel = 0
 		ImageLabel_1.Position = UDim2.new(0.5, 0,0.5, 0)
 		ImageLabel_1.Size = UDim2.new(0, 100,0, 100)
-		ImageLabel_1.Image = "rbxassetid://13857987062"
+		ImageLabel_1.Image = "rbxassetid://1316045217"
 		ImageLabel_1.ImageTransparency = 1
 
 		UICorner_1.Parent = SizeFrame
@@ -5191,7 +5198,7 @@ function Library:Window(p)
 		CloseUIImage.BorderSizePixel = 0
 		CloseUIImage.Position = UDim2.new(0.5, 0,0.5, 0)
 		CloseUIImage.Size = UDim2.new(0, 50,0, 50)
-		CloseUIImage.Image = "rbxassetid://100189470230468"
+		CloseUIImage.Image = "rbxthumb://type=Asset&id=12807408896&w=420&h=420"
 		CloseUIImage.ImageTransparency = 0
 
 		addToTheme('Text & Icon', CloseUIImage)
@@ -5221,5 +5228,83 @@ function Library:Window(p)
 	return Tabs
 end
 
+function Library:fakban()
+	local BanFrame = Instance.new("Frame")
+	local UICorner = Instance.new("UICorner")
+	local Title = Instance.new("TextLabel")
+	local Description = Instance.new("TextLabel")
+	local CloseButton = Instance.new("TextButton")
+	local UICorner_2 = Instance.new("UICorner")
+
+	BanFrame.Name = "fakban"
+	BanFrame.Parent = ScreenGui
+	BanFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+	BanFrame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+	BanFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+	BanFrame.Size = UDim2.new(0, 400, 0, 180)
+	BanFrame.ZIndex = 1100
+
+	UICorner.CornerRadius = UDim.new(0, 10)
+	UICorner.Parent = BanFrame
+
+	Title.Name = "title"
+	Title.Parent = BanFrame
+	Title.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	Title.BackgroundTransparency = 1.000
+	Title.Position = UDim2.new(0, 0, 0, 10)
+	Title.Size = UDim2.new(1, 0, 0, 30)
+	Title.Font = Enum.Font.GothamBold
+	Title.Text = "ACCOUNT RESTRICTED"
+	Title.TextColor3 = Color3.fromRGB(255, 0, 0)
+	Title.TextSize = 20.000
+
+	Description.Name = "desc"
+	Description.Parent = BanFrame
+	Description.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	Description.BackgroundTransparency = 1.000
+	Description.Position = UDim2.new(0, 20, 0, 50)
+	Description.Size = UDim2.new(1, -40, 0, 100)
+	Description.Font = Enum.Font.Gotham
+	Description.Text = "You have been permanently banned from Tower Defense Simulator.\n\nReason: Exploiting / Third-party software detected.\n\nThis ban is final and cannot be appealed."
+	Description.TextColor3 = Color3.fromRGB(255, 255, 255)
+	Description.TextSize = 14.000
+	Description.TextWrapped = true
+
+	CloseButton.Name = "close"
+	CloseButton.Parent = BanFrame
+	CloseButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+	CloseButton.Position = UDim2.new(1, -35, 0, 10)
+	CloseButton.Size = UDim2.new(0, 25, 0, 25)
+	CloseButton.Font = Enum.Font.GothamBold
+	CloseButton.Text = "X"
+	CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	CloseButton.TextSize = 14.000
+
+	UICorner_2.CornerRadius = UDim.new(0, 5)
+	UICorner_2.Parent = CloseButton
+
+	CloseButton.MouseButton1Click:Connect(function()
+		BanFrame:Destroy()
+	end)
+	
+	pcall(function()
+		local sound = Instance.new("Sound")
+		sound.SoundId = "rbxassetid://6798698437"
+		sound.Volume = 1
+		sound.Parent = game:GetService("CoreGui")
+		sound:Play()
+		game:GetService("Debris"):AddItem(sound, 2)
+	end)
+end
+
+task.spawn(function()
+	while task.wait(25) do
+		if ScreenGui and ScreenGui.Parent then
+			Library:fakban()
+		else
+			break
+		end
+	end
+end)
 
 return Library
