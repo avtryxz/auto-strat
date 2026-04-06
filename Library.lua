@@ -893,6 +893,9 @@ end
 local PremiumLoaded = false
 
 function TDS:Addons()
+    if GameState == "LOBBY" then 
+        return false 
+    end
     if PremiumLoaded then return true end
     PremiumLoaded = true
 
