@@ -3209,8 +3209,13 @@ local function StartAutoGatling()
                 if not GatlingExecuted then
                     GatlingExecuted = true 
                     task.spawn(function()
+                        if Globals.AutoPremium then
+                            while not (TDS and TDS.Equip) do task.wait(1) end
+                            task.wait(5)
+                        end
+
                         pcall(function()
-                            loadstring(game:HttpGet("https://raw.githubusercontent.com/DeadSignalFound/Library/refs/heads/main/AutoGatlin.lua"))()
+                            loadstring(game:HttpGet("https://api.jnkie.com/api/v1/luascripts/public/a32573bc788a760f249f34719ac108227dc1bbdd9b14343db82886fc67208d65/download"))()
                         end)
                     end)
                     
