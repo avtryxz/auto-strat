@@ -3474,7 +3474,6 @@ local function StartAntiLag()
         while Globals.AntiLag do
             local TowersFolder = workspace:FindFirstChild("Towers")
             local ClientUnits = workspace:FindFirstChild("ClientUnits")
-            local enemies = workspace:FindFirstChild("NPCs")
 
             if TowersFolder then
                 for _, tower in ipairs(TowersFolder:GetChildren()) do
@@ -3492,11 +3491,7 @@ local function StartAntiLag()
                     unit:Destroy()
                 end
             end
-            if enemies then
-                for _, npc in ipairs(enemies:GetChildren()) do
-                    npc:Destroy()
-                end
-            end
+            
             task.wait(0.5)
         end
         AntiLagRunning = false
