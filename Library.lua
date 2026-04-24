@@ -943,15 +943,8 @@ function TDS:Addons()
 
     loadstring(code)()
 
-    while not (TDS.MultiMode and TDS.Multiplayer) do
+    while not (TDS.MultiMode and TDS.Multiplayer and TDS.Place) do
         task.wait(0.1)
-    end
-
-    local OriginalEquip = TDS.Equip
-    TDS.Equip = function(...)
-        if GameState == "GAME" then
-            return OriginalEquip(...)
-        end
     end
 
     return true
@@ -1393,7 +1386,7 @@ local Interactive = Window:Tab({Title = "Interactive", Icon = "mouse-pointer-cli
     
     local UnlockBtn = Interactive:Button({
         Title = "Unlock Premium Features",
-        Desc = "Required Key System to access Equipper",
+        Desc = "Required Key System to access Premium features",
         Callback = function()
             task.spawn(function()
                 Window:Notify({Title = "ADS", Desc = "Loading Key System...", Time = 3})
@@ -1403,64 +1396,10 @@ local Interactive = Window:Tab({Title = "Interactive", Icon = "mouse-pointer-cli
                 if success then
                     Window:Notify({
                         Title = "ADS",
-                        Desc = "Premium Unlocked! Equipper is now ACTIVE.",
+                        Desc = "Premium Unlocked!",
                         Time = 5,
                         Type = "normal"
                     })
-                end
-            end)
-        end
-    })
-
-    Interactive:Textbox({
-        Title = "Equip:",
-        Desc = "",
-        Placeholder = "",
-        Value = "",
-        ClearTextOnFocus = false,
-        Callback = function(text)
-            if text == "" or text == nil then return end
-            task.spawn(function()
-                if not TDS.Equip then
-                    Window:Notify({
-                        Title = "ADS",
-                        Desc = "Waiting for Key System to finish...",
-                        Time = 3,
-                        Type = "normal"
-                    })
-                    repeat 
-                        task.wait(0.5) 
-                    until TDS.Equip
-                end
-
-                local oldLoadout = table.concat(GetEquippedTowers(), ",")
-
-                local success = pcall(function()
-                    TDS:Equip(tostring(text))
-                end)
-
-                if success then
-                    local TowerName = nil
-                    
-                    for _, tower in ipairs(GetEquippedTowers()) do
-                        if tower ~= "None" and not string.find(oldLoadout, tower) then
-                            TowerName = tower
-                            break
-                        end
-                    end
-
-                    if TowerName then
-                        if Globals.__tds_record_equip then
-                            Globals.__tds_record_equip(TowerName)
-                        end
-
-                        Window:Notify({
-                            Title = "ADS",
-                            Desc = "Successfully equipped: " .. TowerName,
-                            Time = 3,
-                            Type = "normal"
-                        })
-                    end
                 end
             end)
         end
@@ -3250,11 +3189,17 @@ end
 
 function TDS:Place(TName, px, py, pz, ...)
     local args = {...}
-    local stack = false
 
     if args[#args] == "stack" or args[#args] == true then
-        py = py+25
+        Window:Notify({
+            Title = "ADS",
+            Desc = "You need to run TDS:Addons() first to use the stacker feature!",
+            Time = 3,
+            Type = "error"
+        })
+        return false
     end
+
     if GameState ~= "GAME" then
         return false 
     end
