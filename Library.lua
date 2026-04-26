@@ -137,6 +137,7 @@ local GatlingExecuted = false
 local AutoPremiumRunning = false
 local StackerErrorShown = false
 local PremiumLoaded = false
+local AddonActive = false
 
 local MaxPathDistance = 300 -- default
 local MilMarker = nil
@@ -912,28 +913,45 @@ local function MissionsUIFix()
 end
 
 function TDS:Addons()
-    if GameState == "LOBBY" then 
-        return false 
-    end
+    if GameState == "LOBBY" then return false end
     if PremiumLoaded then return true end
+    
+    if AddonActive then
+        repeat task.wait(0.5) until PremiumLoaded or not AddonActive
+        return PremiumLoaded
+    end
 
-    PremiumLoaded = true
+    AddonActive = true
 
     local url = "https://api.jnkie.com/api/v1/luascripts/public/57fe397f76043ce06afad24f07528c9f93e97730930242f57134d0b60a2d250b/download"
     local success, code = pcall(game.HttpGet, game, url)
 
-    if not success then
-        PremiumLoaded = false
+    if not success or not code then
+        AddonActive = false
         return false
     end
 
-    loadstring(code)()
+    local LocalPlaceRef = self.Place
+    local addonLoader = loadstring(code)
+    
+    if addonLoader then
+        if pcall(addonLoader) then
+            while true do
+                local addonReady = (TDS.MultiMode and TDS.Multiplayer)
+                local functionsHooked = (self.Place ~= LocalPlaceRef)
 
-    while not (TDS.MultiMode and TDS.Multiplayer and TDS.Place) do
-        task.wait(0.1)
+                if addonReady and functionsHooked then
+                    task.wait(1.5) 
+                    break
+                end
+                task.wait(0.2)
+            end
+            PremiumLoaded = true
+        end
     end
 
-    return true
+    AddonActive = false
+    return PremiumLoaded
 end
 
 local function GetEquippedTowers()
@@ -3193,11 +3211,15 @@ function TDS:Place(TName, px, py, pz, ...)
             StackerErrorShown = true
             Window:Notify({
                 Title = "ADS",
-                Desc = "You need to run TDS:Addons() first to use the stacker feature!",
+                Desc = "You need to run TDS:Addons() first to use the stacker feature, running it for you!",
                 Time = 3,
                 Type = "error"
             })
-            
+
+            if not PremiumLoaded then
+                TDS:Addons()
+            end
+
             return false
         end
     end
@@ -3425,38 +3447,6 @@ local function StartAutoPremium()
         end
     end)
 end
-
-local AntiStuck = nil
-
-local function StartAntiStuck()
-    local function StuckState()
-        local isLoading = LocalPlayer:GetAttribute("Loading") == true
-        local isTeleporting = LocalPlayer:GetAttribute("Teleporting") == true
-
-        if isLoading or isTeleporting then
-            if not AntiStuck then
-                AntiStuck = task.spawn(function()
-                    task.wait(60)
-                    pcall(function()
-                        TeleportService:Teleport(3260590327)
-                    end)
-                end)
-            end
-        else
-            if AntiStuck then
-                task.cancel(AntiStuck)
-                AntiStuck = nil
-            end
-        end
-    end
-
-    LocalPlayer:GetAttributeChangedSignal("Loading"):Connect(StuckState)
-    LocalPlayer:GetAttributeChangedSignal("Teleporting"):Connect(StuckState)
-
-    StuckState()
-end
-
-StartAntiStuck()
 
 local function StartAutoPickups()
     if AutoPickupsRunning or not Globals.AutoPickups then return end
