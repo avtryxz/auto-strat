@@ -913,7 +913,10 @@ local function MissionsUIFix()
 end
 
 function TDS:Addons()
-    if GameState == "LOBBY" then return false end
+    if GameState == "LOBBY" then 
+        return false 
+    end
+    
     if PremiumLoaded then return true end
     
     if AddonActive then
