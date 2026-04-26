@@ -3193,15 +3193,11 @@ function TDS:Place(TName, px, py, pz, ...)
             StackerErrorShown = true
             Window:Notify({
                 Title = "ADS",
-                Desc = "You need to run TDS:Addons() first to use the stacker feature, running it for you!",
+                Desc = "You need to run TDS:Addons() first to use the stacker feature!",
                 Time = 3,
                 Type = "error"
             })
-
-            if not PremiumLoaded then
-                TDS:Addons()
-            end
-
+            
             return false
         end
     end
