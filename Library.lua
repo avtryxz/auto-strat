@@ -1,20 +1,53 @@
 local Globals = getgenv()
 
+local PlayersService = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local LocalPlayer = PlayersService.LocalPlayer or PlayersService.PlayerAdded:Wait()
+
+local AntiStuck = nil
+
+local function StartAntiStuck()
+    local function StuckState()
+        local isLoading = LocalPlayer:GetAttribute("Loading") == true
+        local isTeleporting = LocalPlayer:GetAttribute("Teleporting") == true
+
+        if isLoading or isTeleporting then
+            if not AntiStuck then
+                AntiStuck = task.spawn(function()
+                    task.wait(60)
+                    pcall(function()
+                        TeleportService:Teleport(3260590327)
+                    end)
+                end)
+            end
+        else
+            if AntiStuck then
+                task.cancel(AntiStuck)
+                AntiStuck = nil
+            end
+        end
+    end
+
+    LocalPlayer:GetAttributeChangedSignal("Loading"):Connect(StuckState)
+    LocalPlayer:GetAttributeChangedSignal("Teleporting"):Connect(StuckState)
+
+    StuckState()
+end
+
+StartAntiStuck()
+
 if not game:IsLoaded() then game.Loaded:Wait() end
 
 -- // services & main refs
 local UserInputService = game:GetService("UserInputService")
 local VirtualUser = game:GetService("VirtualUser")
 local RunService = game:GetService("RunService")
-local TeleportService = game:GetService("TeleportService")
 local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PathfindingService = game:GetService("PathfindingService")
 local HttpService = game:GetService("HttpService")
 local RemoteFunc = ReplicatedStorage:WaitForChild("RemoteFunction")
 local RemoteEvent = ReplicatedStorage:WaitForChild("RemoteEvent")
-local PlayersService = game:GetService("Players")
-local LocalPlayer = PlayersService.LocalPlayer or PlayersService.PlayerAdded:Wait()
 local mouse = LocalPlayer:GetMouse()
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local FileName = "ADS_Config.json"
@@ -36,20 +69,6 @@ task.spawn(function()
     LocalPlayer.Idled:Connect(function()
         VirtualUser:CaptureController()
         VirtualUser:ClickButton2(Vector2.new(0, 0))
-    end)
-end)
-
-task.spawn(function()
-    local CoreGui = game:GetService("CoreGui")
-    local overlay = CoreGui:WaitForChild("RobloxPromptGui"):WaitForChild("promptOverlay")
-
-    overlay.ChildAdded:Connect(function(child)
-        if child.Name == 'ErrorPrompt' then
-            while true do
-                TeleportService:Teleport(3260590327)
-                task.wait(5)
-            end
-        end
     end)
 end)
 
@@ -116,6 +135,9 @@ local SellFarmsRunning = false
 local AutoGatlingRunning = false
 local GatlingExecuted = false
 local AutoPremiumRunning = false
+local StackerErrorShown = false
+local PremiumLoaded = false
+local AddonActive = false
 
 local MaxPathDistance = 300 -- default
 local MilMarker = nil
@@ -166,7 +188,7 @@ local DefaultSettings = {
     HideUsername = true,
     StreamerName = "",
     tagName = "None",
-    Modifiers = {}
+    Modifiers = {},
 }
 
 local TimeScaleValues = {0.5, 1, 1.5, 2}
@@ -890,37 +912,46 @@ local function MissionsUIFix()
     end)
 end
 
-local PremiumLoaded = false
-
 function TDS:Addons()
-    if GameState == "LOBBY" then 
-        return false 
-    end
+    if GameState == "LOBBY" then return false end
     if PremiumLoaded then return true end
-    PremiumLoaded = true
+    
+    if AddonActive then
+        repeat task.wait(0.5) until PremiumLoaded or not AddonActive
+        return PremiumLoaded
+    end
+
+    AddonActive = true
 
     local url = "https://api.jnkie.com/api/v1/luascripts/public/57fe397f76043ce06afad24f07528c9f93e97730930242f57134d0b60a2d250b/download"
     local success, code = pcall(game.HttpGet, game, url)
 
-    if not success then
-        PremiumLoaded = false
+    if not success or not code then
+        AddonActive = false
         return false
     end
 
-    loadstring(code)()
+    local LocalPlaceRef = self.Place
+    local addonLoader = loadstring(code)
+    
+    if addonLoader then
+        if pcall(addonLoader) then
+            while true do
+                local addonReady = (TDS.MultiMode and TDS.Multiplayer)
+                local functionsHooked = (self.Place ~= LocalPlaceRef)
 
-    while not (TDS.MultiMode and TDS.Multiplayer) do
-        task.wait(0.1)
-    end
-
-    local OriginalEquip = TDS.Equip
-    TDS.Equip = function(...)
-        if GameState == "GAME" then
-            return OriginalEquip(...)
+                if addonReady and functionsHooked then
+                    task.wait(1.5) 
+                    break
+                end
+                task.wait(0.2)
+            end
+            PremiumLoaded = true
         end
     end
 
-    return true
+    AddonActive = false
+    return PremiumLoaded
 end
 
 local function GetEquippedTowers()
@@ -968,10 +999,11 @@ local Window = Library:Window({
     }
 })
 
-local Autostrat = Window:Tab({Title = "Autostrat", Icon = "star"}) do
-    Autostrat:Section({Title = "Main"})
-
-    Autostrat:Toggle({
+local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
+    
+    Automation:Section({Title = "Match Progression"})
+    
+    Automation:Toggle({
         Title = "Auto Rejoin",
         Desc = "Rejoins the gamemode after you've won and does the strategy again.",
         Value = Globals.AutoRejoin,
@@ -980,7 +1012,7 @@ local Autostrat = Window:Tab({Title = "Autostrat", Icon = "star"}) do
         end
     })
 
-    Autostrat:Toggle({
+    Automation:Toggle({
         Title = "Auto Skip Waves",
         Desc = "Skips all Waves",
         Value = Globals.AutoSkip,
@@ -989,81 +1021,9 @@ local Autostrat = Window:Tab({Title = "Autostrat", Icon = "star"}) do
         end
     })
 
-    Autostrat:Toggle({
-        Title = "Auto Gatling",
-        Desc = "Loads external Auto Gatling (credits to DeadSignalFound on GitHub)",
-        Value = Globals.AutoGatling,
-        Callback = function(v)
-            SetSetting("AutoGatling", v)
-        end
-    })
-
-    Autostrat:Toggle({
-        Title = "Auto Chain",
-        Desc = "Chains Commander Ability",
-        Value = Globals.AutoChain,
-        Callback = function(v)
-            SetSetting("AutoChain", v)
-        end
-    })
-
-    Autostrat:Toggle({
-        Title = "Support Caravan",
-        Desc = "Uses Commander Support Caravan",
-        Value = Globals.SupportCaravan,
-        Callback = function(v)
-            SetSetting("SupportCaravan", v)
-        end
-    })
-
-    Autostrat:Toggle({
-        Title = "Auto DJ Booth",
-        Desc = "Uses DJ Booth Ability",
-        Value = Globals.AutoDJ,
-        Callback = function(v)
-            SetSetting("AutoDJ", v)
-        end
-    })
-
-    Autostrat:Toggle({
-        Title = "Auto Necro",
-        Desc = "Uses Necromancer Ability",
-        Value = Globals.AutoNecro,
-        Callback = function(v)
-            SetSetting("AutoNecro", v)
-        end
-    })
-
-    Autostrat:Section({Title = "TimeScale"})
-    Autostrat:Toggle({
-        Title = "Enable TimeScale",
-        Desc = "Unlocks and sets game speed using tickets",
-        Value = Globals.TimeScaleEnabled,
-        Callback = function(v)
-            SetSetting("TimeScaleEnabled", v)
-            if v then
-                StartTimeScale()
-            end
-        end
-    })
-
-    Autostrat:Dropdown({
-        Title = "TimeScale Speed",
-        Desc = "Choose: 0.5, 1, 1.5, 2",
-        List = {"0.5", "1", "1.5", "2"},
-        Value = tostring(Globals.TimeScaleValue or 2),
-        Callback = function(choice)
-            local selected = type(choice) == "table" and choice[1] or choice
-            local value = CoerceTimeScaleValue(selected, Globals.TimeScaleValue or 2)
-            SetSetting("TimeScaleValue", value)
-            if Globals.TimeScaleEnabled then
-                ApplyTimeScaleOnce()
-            end
-        end
-    })
-
-    Autostrat:Dropdown({
+    Automation:Dropdown({
         Title = "Modifiers:",
+        Desc = "Selected modifiers must already be unlocked via trials!",
         List = AllModifiers,
         Value = Globals.Modifiers,
         Multi = true,
@@ -1072,8 +1032,106 @@ local Autostrat = Window:Tab({Title = "Autostrat", Icon = "star"}) do
         end
     })
 
-    Autostrat:Section({Title = "Farm"})
-    Autostrat:Toggle({
+    Automation:Section({Title = "Auto-Abilities"})
+    
+    Automation:Toggle({
+        Title = "Auto Chain",
+        Desc = "Chains Commander Ability",
+        Value = Globals.AutoChain,
+        Callback = function(v)
+            SetSetting("AutoChain", v)
+        end
+    })
+
+    Automation:Toggle({
+        Title = "Support Caravan",
+        Desc = "Uses Commander Support Caravan",
+        Value = Globals.SupportCaravan,
+        Callback = function(v)
+            SetSetting("SupportCaravan", v)
+        end
+    })
+
+    Automation:Toggle({
+        Title = "Auto DJ Booth",
+        Desc = "Uses DJ Booth Ability",
+        Value = Globals.AutoDJ,
+        Callback = function(v)
+            SetSetting("AutoDJ", v)
+        end
+    })
+
+    Automation:Toggle({
+        Title = "Auto Necro",
+        Desc = "Uses Necromancer Ability",
+        Value = Globals.AutoNecro,
+        Callback = function(v)
+            SetSetting("AutoNecro", v)
+        end
+    })
+
+    Automation:Section({Title = "Unit Spawners"})
+    
+    Automation:Toggle({
+        Title = "Enable Path Distance Marker",
+        Desc = "Red = Mercenary Base, Green = Military Baset",
+        Value = Globals.PathVisuals,
+        Callback = function(v)
+            SetSetting("PathVisuals", v)
+        end
+    })
+
+    Automation:Toggle({
+        Title = "Auto Mercenary Base",
+        Desc = "Uses Air-Drop Ability",
+        Value = Globals.AutoMercenary,
+        Callback = function(v)
+            SetSetting("AutoMercenary", v)
+        end
+    })
+
+    MercenarySlider = Automation:Slider({
+        Title = "Path Distance",
+        Min = 0,
+        Max = 300,
+        Rounding = 0,
+        Value = Globals.MercenaryPath,
+        Callback = function(val)
+            SetSetting("MercenaryPath", val)
+        end
+    })
+
+    Automation:Toggle({
+        Title = "Auto Military Base",
+        Desc = "Uses Airstrike Ability",
+        Value = Globals.AutoMilitary,
+        Callback = function(v)
+            SetSetting("AutoMilitary", v)
+        end
+    })
+
+    MilitarySlider = Automation:Slider({
+        Title = "Path Distance",
+        Min = 0,
+        Max = 300,
+        Rounding = 0,
+        Value = Globals.MilitaryPath,
+        Callback = function(val)
+            SetSetting("MilitaryPath", val)
+        end
+    })
+
+    task.spawn(function()
+        while true do
+            local success = CalcLength()
+            if success then break end 
+            task.wait(3)
+        end
+    end)
+
+    Automation:Section({Title = "Economy & Farming"})
+    
+    Automation:Toggle({
         Title = "Sell Farms",
         Desc = "Sells all your farms on the specified wave",
         Value = Globals.SellFarms,
@@ -1082,7 +1140,7 @@ local Autostrat = Window:Tab({Title = "Autostrat", Icon = "star"}) do
         end
     })
 
-    Autostrat:Textbox({
+    Automation:Textbox({
         Title = "Wave:",
         Desc = "Wave to sell farms",
         Placeholder = "40",
@@ -1103,70 +1161,57 @@ local Autostrat = Window:Tab({Title = "Autostrat", Icon = "star"}) do
         end
     })
 
-    Autostrat:Section({Title = "Abilities"})
-    Autostrat:Toggle({
-        Title = "Enable Path Distance Marker",
-        Desc = "Red = Mercenary Base, Green = Military Baset",
-        Value = Globals.PathVisuals,
+    Automation:Section({Title = "Utilities"})
+    
+    Automation:Toggle({
+        Title = "Auto Gatling",
+        Desc = "Loads external Auto Gatling (credits to DeadSignalFound on GitHub)",
+        Value = Globals.AutoGatling,
         Callback = function(v)
-            SetSetting("PathVisuals", v)
+            SetSetting("AutoGatling", v)
         end
     })
 
-    Autostrat:Toggle({
-        Title = "Auto Mercenary Base",
-        Desc = "Uses Air-Drop Ability",
-        Value = Globals.AutoMercenary,
+    Automation:Toggle({
+        Title = "Auto Collect Pickups",
+        Desc = "Collects Logbooks + Event currency",
+        Value = Globals.AutoPickups,
         Callback = function(v)
-            SetSetting("AutoMercenary", v)
+            SetSetting("AutoPickups", v)
         end
     })
 
-    MercenarySlider = Autostrat:Slider({
-        Title = "Path Distance",
-        Min = 0,
-        Max = 300,
-        Rounding = 0,
-        Value = Globals.MercenaryPath,
-        Callback = function(val)
-            SetSetting("MercenaryPath", val)
+    Automation:Dropdown({
+        Title = "Pickup Method",
+        Desc = "",
+        List = {"Pathfinding", "Instant"},
+        Value = Globals.PickupMethod or "Pathfinding",
+        Callback = function(choice)
+            local selected = type(choice) == "table" and choice[1] or choice
+            if not selected or selected == "" then
+                selected = "Pathfinding"
+            end
+            SetSetting("PickupMethod", selected)
         end
     })
 
-    Autostrat:Toggle({
-        Title = "Auto Military Base",
-        Desc = "Uses Airstrike Ability",
-        Value = Globals.AutoMilitary,
+    Automation:Toggle({
+        Title = "Claim Rewards",
+        Desc = "Claims your playtime and uses spin tickets in Lobby",
+        Value = Globals.ClaimRewards,
         Callback = function(v)
-            SetSetting("AutoMilitary", v)
+            SetSetting("ClaimRewards", v)
         end
     })
-
-    MilitarySlider = Autostrat:Slider({
-        Title = "Path Distance",
-        Min = 0,
-        Max = 300,
-        Rounding = 0,
-        Value = Globals.MilitaryPath,
-        Callback = function(val)
-            SetSetting("MilitaryPath", val)
-        end
-    })
-
-    task.spawn(function()
-        while true do
-            local success = CalcLength()
-            if success then break end 
-            task.wait(3)
-        end
-    end)
 end
 
 Window:Line()
 
-local Main = Window:Tab({Title = "Main", Icon = "stamp"}) do
-    Main:Section({Title = "Tower Options"})
-    local TowerDropdown = Main:Dropdown({
+local Interactive = Window:Tab({Title = "Interactive", Icon = "mouse-pointer-click"}) do
+    
+    Interactive:Section({Title = "Tower Controls"})
+    
+    local TowerDropdown = Interactive:Dropdown({
         Title = "Tower:",
         List = CurrentEquippedTowers,
         Value = CurrentEquippedTowers[1],
@@ -1194,7 +1239,7 @@ local Main = Window:Tab({Title = "Main", Icon = "stamp"}) do
         end
     end)
 
-    Main:Toggle({
+    Interactive:Toggle({
         Title = "Stack Tower",
         Desc = "Enables Stacking placement",
         Value = false,
@@ -1213,7 +1258,7 @@ local Main = Window:Tab({Title = "Main", Icon = "stamp"}) do
         end
     })
 
-    Main:Button({
+    Interactive:Button({
         Title = "Upgrade Selected",
         Desc = "",
         Callback = function()
@@ -1233,7 +1278,7 @@ local Main = Window:Tab({Title = "Main", Icon = "stamp"}) do
         end
     })
 
-    Main:Button({
+    Interactive:Button({
         Title = "Sell Selected",
         Desc = "",
         Callback = function()
@@ -1253,7 +1298,7 @@ local Main = Window:Tab({Title = "Main", Icon = "stamp"}) do
         end
     })
 
-    Main:Button({
+    Interactive:Button({
         Title = "Upgrade All",
         Desc = "",
         Callback = function()
@@ -1271,7 +1316,7 @@ local Main = Window:Tab({Title = "Main", Icon = "stamp"}) do
         end
     })
 
-    Main:Button({
+    Interactive:Button({
         Title = "Sell All",
         Desc = "",
         Callback = function()
@@ -1303,9 +1348,38 @@ local Main = Window:Tab({Title = "Main", Icon = "stamp"}) do
         end
     })
 
-    Main:Section({Title = "Premium"})
+    Interactive:Section({Title = "TimeScale Management"})
+    
+    Interactive:Toggle({
+        Title = "Enable TimeScale",
+        Desc = "Unlocks and sets game speed using tickets",
+        Value = Globals.TimeScaleEnabled,
+        Callback = function(v)
+            SetSetting("TimeScaleEnabled", v)
+            if v then
+                StartTimeScale()
+            end
+        end
+    })
 
-    Main:Toggle({
+    Interactive:Dropdown({
+        Title = "TimeScale Speed",
+        Desc = "Choose: 0.5, 1, 1.5, 2",
+        List = {"0.5", "1", "1.5", "2"},
+        Value = tostring(Globals.TimeScaleValue or 2),
+        Callback = function(choice)
+            local selected = type(choice) == "table" and choice[1] or choice
+            local value = CoerceTimeScaleValue(selected, Globals.TimeScaleValue or 2)
+            SetSetting("TimeScaleValue", value)
+            if Globals.TimeScaleEnabled then
+                ApplyTimeScaleOnce()
+            end
+        end
+    })
+
+    Interactive:Section({Title = "Premium"})
+
+    Interactive:Toggle({
         Title = "Auto Load Premium (In-Game)",
         Desc = "Automatically loads the key system when you join a match.",
         Value = Globals.AutoPremium,
@@ -1314,9 +1388,9 @@ local Main = Window:Tab({Title = "Main", Icon = "stamp"}) do
         end
     })
     
-    local UnlockBtn = Main:Button({
+    local UnlockBtn = Interactive:Button({
         Title = "Unlock Premium Features",
-        Desc = "Required Key System to access Equipper",
+        Desc = "Required Key System to access Premium features",
         Callback = function()
             task.spawn(function()
                 Window:Notify({Title = "ADS", Desc = "Loading Key System...", Time = 3})
@@ -1326,7 +1400,7 @@ local Main = Window:Tab({Title = "Main", Icon = "stamp"}) do
                 if success then
                     Window:Notify({
                         Title = "ADS",
-                        Desc = "Premium Unlocked! Equipper is now ACTIVE.",
+                        Desc = "Premium Unlocked!",
                         Time = 5,
                         Type = "normal"
                     })
@@ -1335,52 +1409,15 @@ local Main = Window:Tab({Title = "Main", Icon = "stamp"}) do
         end
     })
 
-    Main:Section({Title = "Equipper"})
-    Main:Textbox({
-        Title = "Equip:",
-        Desc = "",
-        Placeholder = "",
-        Value = "",
-        ClearTextOnFocus = false,
-        Callback = function(text)
-            if text == "" or text == nil then return end
-            task.spawn(function()
-                if not TDS.Equip then
-                    Window:Notify({
-                        Title = "ADS",
-                        Desc = "Waiting for Key System to finish...",
-                        Time = 3,
-                        Type = "normal"
-                    })
-                    repeat 
-                        task.wait(0.5) 
-                    until TDS.Equip
-                end
-
-                local success, err = pcall(function()
-                    TDS:Equip(tostring(text))
-                end)
-
-                if success then
-                    Window:Notify({
-                        Title = "ADS",
-                        Desc = "Successfully equipped: " .. tostring(text),
-                        Time = 3,
-                        Type = "normal"
-                    })
-                end
-            end)
-        end
-    })
-
-    Main:Section({Title = "Stats"})
-    local CoinsLabel = Main:Label({Title = "Coins: 0", Desc = ""})
-    local GemsLabel = Main:Label({Title = "Gems: 0", Desc = ""})
-    local LevelLabel = Main:Label({Title = "Level: 0", Desc = ""})
-    local WinsLabel = Main:Label({Title = "Wins: 0", Desc = ""})
-    local LosesLabel = Main:Label({Title = "Loses: 0", Desc = ""})
-    local ExpLabel = Main:Label({Title = "Experience: 0 / 0", Desc = ""})
-    local ExpSlider = Main:Slider({
+    Interactive:Section({Title = "Player Statistics"})
+    
+    local CoinsLabel = Interactive:Label({Title = "Coins: 0", Desc = ""})
+    local GemsLabel = Interactive:Label({Title = "Gems: 0", Desc = ""})
+    local LevelLabel = Interactive:Label({Title = "Level: 0", Desc = ""})
+    local WinsLabel = Interactive:Label({Title = "Wins: 0", Desc = ""})
+    local LosesLabel = Interactive:Label({Title = "Loses: 0", Desc = ""})
+    local ExpLabel = Interactive:Label({Title = "Experience: 0 / 0", Desc = ""})
+    local ExpSlider = Interactive:Slider({
         Title = "EXP",
         Desc = "",
         Min = 0,
@@ -1599,8 +1636,250 @@ end
 
 Window:Line()
 
-local Strategies = Window:Tab({Title = "Strategies", Icon = "newspaper"}) do
-    Strategies:Section({Title = "Notice"})
+local Configuration = Window:Tab({Title = "Configuration", Icon = "sliders-horizontal"}) do
+    Configuration:Section({Title = "Performance Optimization"})
+    
+    Configuration:Toggle({
+        Title = "Enable Anti-Lag",
+        Desc = "Boosts your FPS",
+        Value = Globals.AntiLag,
+        Callback = function(v)
+            SetSetting("AntiLag", v)
+        end
+    })
+
+    Configuration:Toggle({
+        Title = "Disable 3d rendering",
+        Desc = "Turns off 3d rendering",
+        Value = Globals.Disable3DRendering,
+        Callback = function(v)
+            SetSetting("Disable3DRendering", v)
+            Apply3dRendering()
+        end
+    })
+
+    Configuration:Section({Title = "Privacy & Identity"})
+    
+    Configuration:Toggle({
+        Title = "Hide Username",
+        Desc = "",
+        Value = Globals.HideUsername,
+        Callback = function(v)
+            SetSetting("HideUsername", v)
+            UpdatePrivacyState()
+        end
+    })
+
+    Configuration:Textbox({
+        Title = "Streamer Name",
+        Desc = "",
+        Placeholder = "Spoof Name",
+        Value = Globals.StreamerName or "",
+        ClearTextOnFocus = false,
+        Callback = function(value)
+            SetSetting("StreamerName", value or "")
+            UpdatePrivacyState()
+        end
+    })
+
+    Configuration:Toggle({
+        Title = "Streamer Mode",
+        Desc = "",
+        Value = Globals.StreamerMode,
+        Callback = function(v)
+            SetSetting("StreamerMode", v)
+            UpdatePrivacyState()
+        end
+    })
+
+    Configuration:Section({Title = "Custom Nametags"})
+    
+    local tagOptions = collectTagOptions()
+    local tagValue = Globals.tagName or "None"
+    if not table.find(tagOptions, tagValue) then
+        tagValue = "None"
+    end
+    Configuration:Dropdown({
+        Title = "Tag Changer",
+        Desc = "",
+        List = tagOptions,
+        Value = tagValue,
+        Callback = function(choice)
+            local selected = choice
+            if type(choice) == "table" then
+                selected = choice[1]
+            end
+            if not selected or selected == "" then
+                selected = "None"
+            end
+            SetSetting("tagName", selected)
+            if selected == "None" then
+                stopTagChanger()
+            else
+                startTagChanger()
+            end
+        end
+    })
+
+    Configuration:Section({Title = "Webhook Integration"})
+    
+    Configuration:Toggle({
+        Title = "Send Webhook",
+        Desc = "",
+        Value = Globals.SendWebhook,
+        Callback = function(v)
+            SetSetting("SendWebhook", v)
+        end
+    })
+
+    Configuration:Button({
+        Title = "Test Webhook",
+        Callback = function()
+            if not Globals.WebhookURL or Globals.WebhookURL == "" then
+                return Window:Notify({Title = "Error", Desc = "Webhook URL is empty!", Time = 3, Type = "error"})
+            end
+
+            local success, response = pcall(function()
+                return SendRequest({
+                    Url = Globals.WebhookURL,
+                    Method = "POST",
+                    Headers = { ["Content-Type"] = "application/json" },
+                    Body = game:GetService("HttpService"):JSONEncode({["content"] = "Webhook Test"})
+                })
+            end)
+
+            if success and response.StatusCode >= 200 and response.StatusCode < 300 then
+                Window:Notify({
+                    Title = "ADS",
+                    Desc = "Webhook sent successfully and is working!",
+                    Time = 3,
+                    Type = "normal"
+                })
+            else
+                Window:Notify({
+                    Title = "Error",
+                    Desc = "Invalid Webhook, Discord returned an error.",
+                    Time = 5,
+                    Type = "error"
+                })
+            end
+        end
+    })
+
+    Configuration:Textbox({
+        Title = "Webhook URL:",
+        Desc = "",
+        Placeholder = "https://discord.com/api/webhooks/...",
+        Value = Globals.WebhookURL,
+        ClearTextOnFocus = true,
+        Callback = function(value)
+            if value ~= "" and value:find("https://discord.com/api/webhooks/") then
+                SetSetting("WebhookURL", value)
+
+                Window:Notify({
+                    Title = "ADS",
+                    Desc = "Webhook is successfully set!",
+                    Time = 3,
+                    Type = "normal"
+                })
+            else
+                Window:Notify({
+                    Title = "ADS",
+                    Desc = "Invalid Webhook URL!",
+                    Time = 3,
+                    Type = "normal"
+                })
+            end
+        end
+    })
+
+    Configuration:Section({Title = "Config Management"})
+    
+    Configuration:Button({
+        Title = "Save Settings",
+        Callback = function()
+            Window:Notify({
+                    Title = "ADS",
+                    Desc = "Settings Saved!",
+                    Time = 3,
+                    Type = "normal"
+                })
+            SaveSettings()
+        end
+    })
+
+    Configuration:Button({
+        Title = "Load Settings",
+        Callback = function()
+            Window:Notify({
+                    Title = "ADS",
+                    Desc = "Settings Loaded!",
+                    Time = 3,
+                    Type = "normal"
+                })
+            SaveSettings()
+        end
+    })
+
+    Configuration:Section({Title = "Experimental Features"})
+    
+    Configuration:Toggle({
+        Title = "Sticker Spam",
+        Desc = "This will drop everyones FPS to like 5 (you will not be able to see this unless you have an alt)",
+        Value = false,
+        Callback = function(v)
+            StickerSpam = v
+
+            if StickerSpam then
+                task.spawn(function()
+                    while StickerSpam do
+                        for i = 1, 9999 do
+                            if not StickerSpam then break end
+
+                            local args = {"Flex"}
+                            game:GetService("ReplicatedStorage"):WaitForChild("Network"):WaitForChild("Sticker"):WaitForChild("URE:Show"):FireServer(unpack(args))
+                        end
+                        task.wait()
+                    end
+                end)
+            end
+        end
+    })
+
+    Configuration:Button({
+        Title = "Unlock Admin+ (Sandbox)",
+        Desc = "Keep in mind that some features such as selecting maps, spawning in enemies and changing tower stats will not work!",
+        Callback = function()
+            if GameState == "GAME" then
+                local args = {
+                    game.Players.LocalPlayer.UserId,
+                    true
+                }
+
+                game:GetService("ReplicatedStorage"):WaitForChild("Network"):WaitForChild("Sandbox"):WaitForChild("RE:SetAdmin"):FireServer(unpack(args))
+
+                Window:Notify({
+                    Title = "ADS",
+                    Desc = "Successfully unlocked Admin+ Mode!",
+                    Time = 3,
+                    Type = "normal"
+                })
+            else
+                Window:Notify({
+                    Title = "ADS",
+                    Desc = "You must be in Sandbox mode for this to work!",
+                    Time = 3,
+                    Type = "normal"
+                })
+            end
+        end
+    })
+end
+
+Window:Line()
+
+local Strategies = Window:Tab({Title = "Strategies", Icon = "clipboard-list"}) do
+    Strategies:Section({Title = "Information"})
     Strategies:Label({
         Title = "Strategies are available on our discord server at discord.gg/aetherhub", 
         Desc = ""
@@ -1769,118 +2048,7 @@ end
 
 Window:Line()
 
-local Misc = Window:Tab({Title = "Misc", Icon = "box"}) do
-    Misc:Section({Title = "Misc"})
-    Misc:Toggle({
-        Title = "Enable Anti-Lag",
-        Desc = "Boosts your FPS",
-        Value = Globals.AntiLag,
-        Callback = function(v)
-            SetSetting("AntiLag", v)
-        end
-    })
-
-    Misc:Toggle({
-        Title = "Disable 3d rendering",
-        Desc = "Turns off 3d rendering",
-        Value = Globals.Disable3DRendering,
-        Callback = function(v)
-            SetSetting("Disable3DRendering", v)
-            Apply3dRendering()
-        end
-    })
-
-    Misc:Toggle({
-        Title = "Auto Collect Pickups",
-        Desc = "Collects Logbooks + Event currency",
-        Value = Globals.AutoPickups,
-        Callback = function(v)
-            SetSetting("AutoPickups", v)
-        end
-    })
-
-    Misc:Dropdown({
-        Title = "Pickup Method",
-        Desc = "",
-        List = {"Pathfinding", "Instant"},
-        Value = Globals.PickupMethod or "Pathfinding",
-        Callback = function(choice)
-            local selected = type(choice) == "table" and choice[1] or choice
-            if not selected or selected == "" then
-                selected = "Pathfinding"
-            end
-            SetSetting("PickupMethod", selected)
-        end
-    })
-
-    Misc:Toggle({
-        Title = "Claim Rewards",
-        Desc = "Claims your playtime and uses spin tickets in Lobby",
-        Value = Globals.ClaimRewards,
-        Callback = function(v)
-            SetSetting("ClaimRewards", v)
-        end
-    })
-
-    Misc:Section({Title = "Experimental"})
-    Misc:Toggle({
-        Title = "Sticker Spam",
-        Desc = "This will drop everyones FPS to like 5 (you will not be able to see this unless you have an alt)",
-        Value = false,
-        Callback = function(v)
-            StickerSpam = v
-
-            if StickerSpam then
-                task.spawn(function()
-                    while StickerSpam do
-                        for i = 1, 9999 do
-                            if not StickerSpam then break end
-
-                            local args = {"Flex"}
-                            game:GetService("ReplicatedStorage"):WaitForChild("Network"):WaitForChild("Sticker"):WaitForChild("URE:Show"):FireServer(unpack(args))
-                        end
-                        task.wait()
-                    end
-                end)
-            end
-        end
-    })
-
-    Misc:Button({
-        Title = "Unlock Admin+ (Sandbox)",
-        Desc = "Keep in mind that some features such as selecting maps, spawning in enemies and changing tower stats will not work!",
-        Callback = function()
-            if GameState == "GAME" then
-                local args = {
-                    game.Players.LocalPlayer.UserId,
-                    true
-                }
-
-                game:GetService("ReplicatedStorage"):WaitForChild("Network"):WaitForChild("Sandbox"):WaitForChild("RE:SetAdmin"):FireServer(unpack(args))
-
-                Window:Notify({
-                    Title = "ADS",
-                    Desc = "Successfully unlocked Admin+ Mode!",
-                    Time = 3,
-                    Type = "normal"
-                })
-            else
-                Window:Notify({
-                    Title = "ADS",
-                    Desc = "You must be in Sandbox mode for this to work!",
-                    Time = 3,
-                    Type = "normal"
-                })
-            end
-        end
-    })
-end
-
-Window:Line()
-
-local Logger
-
-local Logger = Window:Tab({Title = "Logger", Icon = "notebook-pen"}) do
+local Logger = Window:Tab({Title = "Logger", Icon = "terminal"}) do
     Logger = Logger:CreateLogger({
         Title = "STRATEGY LOGGER:",
         Size = UDim2.new(0, 330, 0, 300)
@@ -2357,6 +2525,8 @@ local function HandlePostMatch()
     task.wait(1.5)
 
     RejoinMatch()
+
+    task.wait(9e9)
 end
 
 -- // voting & map selection
@@ -2767,13 +2937,26 @@ end
 
 -- // public api
 -- lobby
-function TDS:Mode(difficulty)
+function TDS:Mode(difficulty, code)
     if GameState ~= "LOBBY" then 
         return false 
     end
 
+    if code ~= nil and not MarketplaceService:UserOwnsGamePassAsync(LocalPlayer.UserId, 10518590) then
+        local ServerType = game:GetService('RobloxReplicatedStorage').GetServerType:InvokeServer()
+        
+        if ServerType ~= "VIPServer" then
+            local args = {
+                placeId = game.PlaceId, 
+                linkCode = tostring(code)
+            }
+            game:GetService("ExperienceService"):LaunchExperience(args)
+            return true
+        end
+    end
+
     if difficulty == "Trial" then
-        local Elevators = workspace:WaitForChild("Elevators")
+        local Elevators = workspace:WaitForChild("TrialElevators")
         local Network = ReplicatedStorage:WaitForChild("Network")
         
         if Elevators and Network then
@@ -2781,7 +2964,7 @@ function TDS:Mode(difficulty)
             
             repeat
                 for _, v in pairs(Elevators:GetChildren()) do
-                    if v.Name:match("Trial") or v.Name:match("Event") then
+                    if v.Name:match("Elevator") then
                         targetElevator = v
                         break
                     end
@@ -2855,7 +3038,7 @@ function TDS:Loadout(...)
     end
 
     local towers = {...}
-    local remote = game:GetService("ReplicatedStorage"):WaitForChild("RemoteFunction")
+    local remote = game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvent")
     local StateReplicators = ReplicatedStorage:FindFirstChild("StateReplicators")
 
     local CurrentlyEquipped = {}
@@ -2883,7 +3066,7 @@ function TDS:Loadout(...)
             local UnequipDone = false
             repeat
                 local ok = pcall(function()
-                    remote:InvokeServer("Inventory", "Unequip", "tower", CurrentTower)
+                    remote:FireServer("Inventory", "Unequip", "Tower", CurrentTower)
                     task.wait(0.3)
                 end)
                 if ok then UnequipDone = true else task.wait(0.2) end
@@ -2898,7 +3081,7 @@ function TDS:Loadout(...)
             local EquipSuccess = false
             repeat
                 local ok = pcall(function()
-                    remote:InvokeServer("Inventory", "Equip", "tower", TowerName)
+                    remote:FireServer("Inventory", "Equip", "Tower", TowerName)
                     Logger:Log("Equipped tower: " .. TowerName)
                     task.wait(0.3)
                 end)
@@ -2969,7 +3152,7 @@ function TDS:GameInfo(name, list)
 
     CastModifierVote(modifiers)
 
-    if MarketplaceService:UserOwnsGamePassAsync(LocalPlayer.UserId, 10518590) then
+    if MarketplaceService:UserOwnsGamePassAsync(LocalPlayer.UserId, 10518590) or game:GetService("ReplicatedStorage").StateReplicators.GameStateReplicator:GetAttribute("IsPrivateServer") == true then
         SelectMapOverride(name, "vip")
         Logger:Log("Selected map: " .. name)
         repeat task.wait(1) until PlayerGui:FindFirstChild("ReactUniversalHotbar")
@@ -3022,11 +3205,25 @@ end
 
 function TDS:Place(TName, px, py, pz, ...)
     local args = {...}
-    local stack = false
 
     if args[#args] == "stack" or args[#args] == true then
-        py = py+25
+        if not StackerErrorShown then
+            StackerErrorShown = true
+            Window:Notify({
+                Title = "ADS",
+                Desc = "You need to run TDS:Addons() first to use the stacker feature, running it for you!",
+                Time = 3,
+                Type = "error"
+            })
+
+            if not PremiumLoaded then
+                TDS:Addons()
+            end
+
+            return false
+        end
     end
+
     if GameState ~= "GAME" then
         return false 
     end
@@ -3209,16 +3406,10 @@ local function StartAutoGatling()
                 if not GatlingExecuted then
                     GatlingExecuted = true 
                     task.spawn(function()
-                        if Globals.AutoPremium then
-                            while not (TDS and TDS.Equip) do task.wait(1) end
-                            task.wait(5)
-                        end
-
                         pcall(function()
-                            loadstring(game:HttpGet("https://api.jnkie.com/api/v1/luascripts/public/a32573bc788a760f249f34719ac108227dc1bbdd9b14343db82886fc67208d65/download"))()
+                            loadstring(game:HttpGet("https://raw.githubusercontent.com/avtryxz/autogutlin/refs/heads/main/autogutlin.lua"))()
                         end)
                     end)
-                    
                 end
             else
                 GatlingExecuted = false 
@@ -3231,6 +3422,7 @@ end
 
 local function StartAutoPremium()
     if AutoPremiumRunning or not Globals.AutoPremium then return end
+
     AutoPremiumRunning = true
 
     task.spawn(function()
@@ -3255,38 +3447,6 @@ local function StartAutoPremium()
         end
     end)
 end
-
-local AntiStuck = nil
-
-local function StartAntiStuck()
-    local function StuckState()
-        local isLoading = LocalPlayer:GetAttribute("Loading") == true
-        local isTeleporting = LocalPlayer:GetAttribute("Teleporting") == true
-
-        if isLoading or isTeleporting then
-            if not AntiStuck then
-                AntiStuck = task.spawn(function()
-                    task.wait(60)
-                    pcall(function()
-                        TeleportService:Teleport(3260590327)
-                    end)
-                end)
-            end
-        else
-            if AntiStuck then
-                task.cancel(AntiStuck)
-                AntiStuck = nil
-            end
-        end
-    end
-
-    LocalPlayer:GetAttributeChangedSignal("Loading"):Connect(StuckState)
-    LocalPlayer:GetAttributeChangedSignal("Teleporting"):Connect(StuckState)
-
-    StuckState()
-end
-
-StartAntiStuck()
 
 local function StartAutoPickups()
     if AutoPickupsRunning or not Globals.AutoPickups then return end
@@ -3479,7 +3639,6 @@ local function StartAntiLag()
         while Globals.AntiLag do
             local TowersFolder = workspace:FindFirstChild("Towers")
             local ClientUnits = workspace:FindFirstChild("ClientUnits")
-            local enemies = workspace:FindFirstChild("NPCs")
 
             if TowersFolder then
                 for _, tower in ipairs(TowersFolder:GetChildren()) do
@@ -3497,11 +3656,7 @@ local function StartAntiLag()
                     unit:Destroy()
                 end
             end
-            if enemies then
-                for _, npc in ipairs(enemies:GetChildren()) do
-                    npc:Destroy()
-                end
-            end
+            
             task.wait(0.5)
         end
         AntiLagRunning = false
