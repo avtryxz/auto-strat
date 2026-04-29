@@ -922,6 +922,7 @@ function TDS:Addons()
         return PremiumLoaded 
     end
 
+    local originalPlace = self.Place
     IsCurrentlyLoading = true
 
     local url = "https://api.jnkie.com/api/v1/luascripts/public/57fe397f76043ce06afad24f07528c9f93e97730930242f57134d0b60a2d250b/download"
@@ -940,7 +941,7 @@ function TDS:Addons()
 
     pcall(func)
 
-    while not (TDS.MultiMode and TDS.Multiplayer and TDS.Place) do
+    while self.Place == originalPlace do
         task.wait(0.1)
     end
 
@@ -3211,9 +3212,10 @@ function TDS:Place(TName, px, py, pz, ...)
         })
 
         local success = self:Addons()
-        if not success then 
-            return false 
+        if success then 
+            return self:Place(TName, px, py, pz, unpack(args))
         end
+        return false
     end
 
     if GameState ~= "GAME" then
