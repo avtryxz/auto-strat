@@ -3203,8 +3203,17 @@ function TDS:Place(TName, px, py, pz, ...)
     local isStacking = args[#args] == "stack" or args[#args] == true
 
     if isStacking and not PremiumLoaded then
+        Window:Notify({
+            Title = "ADS",
+            Desc = "Stacking requires Premium. Automatically loading key system...",
+            Time = 3,
+            Type = "normal"
+        })
+
         local success = self:Addons()
-        if not success then return false end
+        if not success then 
+            return false 
+        end
     end
 
     if GameState ~= "GAME" then
@@ -3241,6 +3250,15 @@ function TDS:Place(TName, px, py, pz, ...)
 
     table.insert(self.PlacedTowers, NewT)
     return #self.PlacedTowers
+end
+
+function TDS:Upgrade(idx, PId)
+    local t = self.PlacedTowers[idx]
+    if t then
+        DoUpgradeTower(t, PId or 1)
+        Logger:Log("Upgrading tower index: " .. idx)
+        UpgradeHistory[idx] = (UpgradeHistory[idx] or 0) + 1
+    end
 end
 
 function TDS:SetTarget(idx, TargetType, ReqWave)
