@@ -137,7 +137,6 @@ local GatlingExecuted = false
 local AutoPremiumRunning = false
 local StackerErrorShown = false
 local PremiumLoaded = false
-local AddonActive = false
 
 local MaxPathDistance = 300 -- default
 local MilMarker = nil
@@ -912,49 +911,42 @@ local function MissionsUIFix()
     end)
 end
 
+local IsCurrentlyLoading = false
+
 function TDS:Addons()
-    if GameState == "LOBBY" then 
-        return false 
-    end
-    
+    if GameState == "LOBBY" then return false end
     if PremiumLoaded then return true end
     
-    if AddonActive then
-        repeat task.wait(0.5) until PremiumLoaded or not AddonActive
-        return PremiumLoaded
+    if IsCurrentlyLoading then 
+        while IsCurrentlyLoading do task.wait(0.1) end
+        return PremiumLoaded 
     end
 
-    AddonActive = true
+    IsCurrentlyLoading = true
 
     local url = "https://api.jnkie.com/api/v1/luascripts/public/57fe397f76043ce06afad24f07528c9f93e97730930242f57134d0b60a2d250b/download"
     local success, code = pcall(game.HttpGet, game, url)
 
     if not success or not code then
-        AddonActive = false
+        IsCurrentlyLoading = false
         return false
     end
 
-    local LocalPlaceRef = self.Place
-    local addonLoader = loadstring(code)
-    
-    if addonLoader then
-        if pcall(addonLoader) then
-            while true do
-                local addonReady = (TDS.MultiMode and TDS.Multiplayer)
-                local functionsHooked = (self.Place ~= LocalPlaceRef)
-
-                if addonReady and functionsHooked then
-                    task.wait(1.5) 
-                    break
-                end
-                task.wait(0.2)
-            end
-            PremiumLoaded = true
-        end
+    local func = loadstring(code)
+    if not func then
+        IsCurrentlyLoading = false
+        return false
     end
 
-    AddonActive = false
-    return PremiumLoaded
+    pcall(func)
+
+    while not (TDS.MultiMode and TDS.Multiplayer and TDS.Place) do
+        task.wait(0.1)
+    end
+
+    PremiumLoaded = true
+    IsCurrentlyLoading = false
+    return true
 end
 
 local function GetEquippedTowers()
@@ -994,7 +986,7 @@ local Window = Library:Window({
     Title = "Aether Hub",
     Desc = "your #1 hub",
     Theme = "Dark",
-    DiscordLink = "https://discord.gg/autostrat",
+    DiscordLink = "https://discord.gg/aetherhub",
     Icon = 100189470230468,
     Config = {
         Keybind = Enum.KeyCode.LeftControl,
@@ -3208,23 +3200,11 @@ end
 
 function TDS:Place(TName, px, py, pz, ...)
     local args = {...}
+    local isStacking = args[#args] == "stack" or args[#args] == true
 
-    if args[#args] == "stack" or args[#args] == true then
-        if not StackerErrorShown then
-            StackerErrorShown = true
-            Window:Notify({
-                Title = "ADS",
-                Desc = "You need to run TDS:Addons() first to use the stacker feature, running it for you!",
-                Time = 3,
-                Type = "error"
-            })
-
-            if not PremiumLoaded then
-                TDS:Addons()
-            end
-
-            return false
-        end
+    if isStacking and not PremiumLoaded then
+        local success = self:Addons()
+        if not success then return false end
     end
 
     if GameState ~= "GAME" then
@@ -3261,15 +3241,6 @@ function TDS:Place(TName, px, py, pz, ...)
 
     table.insert(self.PlacedTowers, NewT)
     return #self.PlacedTowers
-end
-
-function TDS:Upgrade(idx, PId)
-    local t = self.PlacedTowers[idx]
-    if t then
-        DoUpgradeTower(t, PId or 1)
-        Logger:Log("Upgrading tower index: " .. idx)
-        UpgradeHistory[idx] = (UpgradeHistory[idx] or 0) + 1
-    end
 end
 
 function TDS:SetTarget(idx, TargetType, ReqWave)
@@ -3424,19 +3395,18 @@ local function StartAutoGatling()
 end
 
 local function StartAutoPremium()
-    if AutoPremiumRunning or not Globals.AutoPremium then return end
-
+    if AutoPremiumRunning or not Globals.AutoPremium or PremiumLoaded then return end
     AutoPremiumRunning = true
 
     task.spawn(function()
-        if GameState == "GAME" and not PremiumLoaded then
+        if GameState == "GAME" then
             Window:Notify({
                 Title = "ADS",
                 Desc = "Loading Key System...",
                 Time = 3,
                 Type = "normal"
             })
-            
+
             local success = TDS:Addons()
             
             if success then
@@ -3446,7 +3416,12 @@ local function StartAutoPremium()
                     Time = 3,
                     Type = "normal"
                 })
+            else
+                task.wait(5)
+                AutoPremiumRunning = false 
             end
+        else
+            AutoPremiumRunning = false
         end
     end)
 end
