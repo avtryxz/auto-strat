@@ -2389,6 +2389,13 @@ local function RejoinMatch()
     local success = false
     local res
 
+    if TDS.PrivateCode and TDS.PrivateCode ~= "" then
+        Logger:Log("Private server code detected. Returning to private lobby...")
+        SmartTeleportToLobby()
+        task.wait(9e9)
+        return
+    end
+
     repeat
         local StateFolder = ReplicatedStorage:FindFirstChild("State")
         local CurrentMode = StateFolder and StateFolder.Difficulty.Value
