@@ -16,7 +16,7 @@ local function StartAntiStuck()
                 AntiStuck = task.spawn(function()
                     task.wait(60)
                     pcall(function()
-                        TeleportService:Teleport(3260590327)
+                        SmartTeleportToLobby()
                     end)
                 end)
             end
@@ -2367,6 +2367,22 @@ local function GetAllRewards()
     return results
 end
 
+local function SmartTeleportToLobby()
+    local lobbyId = 3260590327
+    if TDS.PrivateCode and TDS.PrivateCode ~= "" then
+        pcall(function()
+            game:GetService("ExperienceService"):LaunchExperience({
+                placeId = lobbyId, 
+                linkCode = TDS.PrivateCode
+            })
+        end)
+    else
+        pcall(function()
+            TeleportService:Teleport(lobbyId)
+        end)
+    end
+end
+
 -- // rejoining
 local function RejoinMatch()
     local remote = game:GetService("ReplicatedStorage"):WaitForChild("RemoteFunction")
@@ -2409,7 +2425,7 @@ local function RejoinMatch()
                         count = 1
                     }
                 elseif CurrentMode == "Trial" then
-                    TeleportService:Teleport(3260590327)
+                    SmartTeleportToLobby()
                     return true
                 else
                     payload = {
@@ -2934,6 +2950,10 @@ end
 -- // public api
 -- lobby
 function TDS:Mode(difficulty, code)
+    if code then
+        self.PrivateCode = tostring(code)
+    end
+
     if GameState ~= "LOBBY" then 
         return false 
     end
@@ -2988,13 +3008,12 @@ function TDS:Mode(difficulty, code)
     local MatchMaking = frame and frame:WaitForChild("matchmaking", 30)
 
     if MatchMaking then
-    local remote = game:GetService("ReplicatedStorage"):WaitForChild("RemoteFunction")
-    local success = false
-    local res
+        local remote = game:GetService("ReplicatedStorage"):WaitForChild("RemoteFunction")
+        local success = false
+        local res
         repeat
             local ok, result = pcall(function()
                 local mode = TDS.MatchmakingMap[difficulty]
-
                 local payload
 
                 if mode then
