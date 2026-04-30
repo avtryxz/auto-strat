@@ -3229,7 +3229,7 @@ function TDS:Place(TName, px, py, pz, ...)
     local args = {...}
     local isStacking = args[#args] == "stack" or args[#args] == true
 
-    if isStacking and not PremiumLoaded then
+    if isStacking and not PremiumLoaded and GameState == "GAME" then
         Window:Notify({
             Title = "ADS",
             Desc = "Stacking requires Premium. Automatically loading key system...",
