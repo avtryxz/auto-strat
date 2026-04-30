@@ -3178,7 +3178,7 @@ function TDS:GameInfo(name, list)
         return true
     else
         Logger:Log("Map '" .. name .. "' not available, rejoining...")
-        TeleportService:Teleport(3260590327, LocalPlayer)
+        SmartTeleportToLobby()
         repeat task.wait(9999) until false
     end
 end
