@@ -243,8 +243,16 @@ local ItemNames = {
     ["139414922355803"] = "Present Clusters(s)"
 }
 
+local function RecordCommand(name, ...)
+    if not TDS.IsReplaying then
+        table.insert(TDS.CommandQueue, {Name = name, Args = {...}})
+    end
+end
+
 -- // tower management core
 TDS = {
+    CommandQueue = {},
+    IsReplaying = false,
     PlacedTowers = {},
     ActiveStrat = true,
     MatchmakingMap = {
@@ -1000,8 +1008,8 @@ local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
     Automation:Section({Title = "Match Progression"})
     
     Automation:Toggle({
-        Title = "Auto Rejoin",
-        Desc = "Rejoins the gamemode after you've won and does the strategy again.",
+        Title = "Auto Rematch",
+        Desc = "Automatically rematches and replays the strategy in the same server after a match ends.",
         Value = Globals.AutoRejoin,
         Callback = function(v)
             SetSetting("AutoRejoin", v)
@@ -2369,18 +2377,40 @@ end
 
 local function SmartTeleportToLobby()
     local lobbyId = 3260590327
-    if TDS.PrivateCode and TDS.PrivateCode ~= "" then
-        pcall(function()
+    
+    pcall(function()
+        if TDS.PrivateCode and TDS.PrivateCode ~= "" then
             game:GetService("ExperienceService"):LaunchExperience({
                 placeId = lobbyId, 
                 linkCode = TDS.PrivateCode
             })
-        end)
-    else
-        pcall(function()
+        else
             TeleportService:Teleport(lobbyId)
-        end)
-    end
+        end
+    end)
+
+    task.wait(10)
+
+    Window:Notify({
+        Title = "Teleport Failed",
+        Desc = "It looks like you're stuck! If you are using Delta, please ensure that 'Verify Teleports' is disabled in your settings.",
+        Time = 9999,
+        Type = "error"
+    })
+
+    task.wait(5)
+
+    Window:Notify({
+        Title = "Fixing Delta Teleport Issues",
+        Desc = "1. Disconnect from the game\n" ..
+               "2. Completely empty your 'autoexecute' folder\n" ..
+               "3. Reopen Roblox and join the game\n" ..
+               "4. Go to Delta settings and disable 'Verify Teleports'\n" ..
+               "5. Disconnect and rejoin to confirm 'Verify Teleports' remains OFF\n" ..
+               "6. Once verified, restore your files to 'autoexecute' and rejoin",
+        Time = 9999,
+        Type = "normal"
+    })
 end
 
 -- // rejoining
@@ -2459,137 +2489,136 @@ local function RejoinMatch()
     return res
 end
 
-local function HandlePostMatch()
-    local UiRoot
-    repeat
-        task.wait(1)
-
-        local root = PlayerGui:FindFirstChild("ReactGameNewRewards")
-        local frame = root and root:FindFirstChild("Frame")
-        local gameOver = frame and frame:FindFirstChild("gameOver")
-        local RewardsScreen = gameOver and gameOver:FindFirstChild("RewardsScreen")
-        UiRoot = RewardsScreen and RewardsScreen:FindFirstChild("RewardsSection")
-    until UiRoot
-
-    if not UiRoot then return RejoinMatch() end
-    if not Globals.AutoRejoin then return end
-
-    if not Globals.SendWebhook then
-        RejoinMatch()
-        return
-    end
-
-    task.wait(1)
-
-    local match = GetAllRewards()
-
-    CurrentTotalCoins += match.Coins
-    CurrentTotalGems += match.Gems
-
-    local BonusString = ""
-    if #match.Others > 0 then
-        for _, res in ipairs(match.Others) do
-            BonusString = BonusString .. "🎁 **" .. res.Amount .. " " .. res.Name .. "**\n"
-        end
-    else
-        BonusString = "_No bonus rewards found._"
-    end
-
-    local PostData = {
-        username = "TDS AutoStrat",
-        embeds = {{
-            title = (match.Status == "WIN" and "🏆 TRIUMPH" or "💀 DEFEAT"),
-            color = (match.Status == "WIN" and 0x2ecc71 or 0xe74c3c),
-            description =
-                "### 📋 Match Overview\n" ..
-                "> **Status:** `" .. match.Status .. "`\n" ..
-                "> **Time:** `" .. match.Time .. "`\n" ..
-                "> **Current Level:** `" .. match.Level .. "`\n" ..
-                "> **Wave:** `" .. match.Wave .. "`\n",
-
-            fields = {
-                {
-                    name = "✨ Rewards",
-                    value = "```ansi\n" ..
-                            "[2;33mCoins:[0m +" .. match.Coins .. "\n" ..
-                            "[2;34mGems: [0m +" .. match.Gems .. "\n" ..
-                            "[2;32mXP:   [0m +" .. match.XP .. "```",
-                    inline = false
-                },
-                {
-                    name = "🎁 Bonus Items",
-                    value = BonusString,
-                    inline = true
-                },
-                {
-                    name = "📊 Session Totals",
-                    value = "```py\n# Total Amount\nCoins: " .. CurrentTotalCoins .. "\nGems:  " .. CurrentTotalGems .. "```",
-                    inline = true
-                }
-            },
-            footer = { text = "Logged for " .. LocalPlayer.Name .. " • TDS AutoStrat" },
-            timestamp = DateTime.now():ToIsoDate()
-        }}
-    }
-
-    pcall(function()
-        SendRequest({
-            Url = Globals.WebhookURL,
-            Method = "POST",
-            Headers = { ["Content-Type"] = "application/json" },
-            Body = game:GetService("HttpService"):JSONEncode(PostData)
-        })
-    end)
-
-    task.wait(1.5)
-
-    RejoinMatch()
-
-    task.wait(9e9)
-end
-
 -- // voting & map selection
 local function RunVoteSkip()
-    while true do
-        local success = pcall(function()
-            RemoteFunc:InvokeServer("Voting", "Skip")
+    pcall(function()
+        RemoteFunc:InvokeServer("Voting", "Skip")
+    end)
+end
+
+local function GetCurrentWave()
+    local GSR = game:GetService("ReplicatedStorage").StateReplicators.GameStateReplicator
+    return GSR:GetAttribute("Wave") or 0
+end
+
+function TDS:GetWave()
+    return GetCurrentWave()
+end
+
+local PostMatchProcessing = false
+
+local function HandlePostMatch()
+    if PostMatchProcessing then return end
+    local GSR = game:GetService("ReplicatedStorage").StateReplicators.GameStateReplicator
+    local VR = game:GetService("ReplicatedStorage").StateReplicators.VoteReplicator
+
+    repeat task.wait(1) until GSR:GetAttribute("GameOver") == true or not Globals.AutoRejoin
+    if not Globals.AutoRejoin then return end
+    PostMatchProcessing = true
+
+    if Globals.SendWebhook then
+        task.wait(1)
+
+        local match = GetAllRewards()
+
+        CurrentTotalCoins += match.Coins
+        CurrentTotalGems += match.Gems
+
+        local BonusString = ""
+        if #match.Others > 0 then
+            for _, res in ipairs(match.Others) do
+                BonusString = BonusString .. "🎁 **" .. res.Amount .. " " .. res.Name .. "**\n"
+            end
+        else
+            BonusString = "_No bonus rewards found._"
+        end
+
+        local PostData = {
+            username = "TDS AutoStrat",
+            embeds = {{
+                title = (match.Status == "WIN" and "🏆 TRIUMPH" or "💀 DEFEAT"),
+                color = (match.Status == "WIN" and 0x2ecc71 or 0xe74c3c),
+                description =
+                    "### 📋 Match Overview\n" ..
+                    "> **Status:** `" .. match.Status .. "`\n" ..
+                    "> **Time:** `" .. match.Time .. "`\n" ..
+                    "> **Current Level:** `" .. match.Level .. "`\n" ..
+                    "> **Wave:** `" .. match.Wave .. "`\n",
+
+                fields = {
+                    {
+                        name = "✨ Rewards",
+                        value = "```ansi\n" ..
+                                "[2;33mCoins:[0m +" .. match.Coins .. "\n" ..
+                                "[2;34mGems: [0m +" .. match.Gems .. "\n" ..
+                                "[2;32mXP:   [0m +" .. match.XP .. "```",
+                        inline = false
+                    },
+                    {
+                        name = "🎁 Bonus Items",
+                        value = BonusString,
+                        inline = true
+                    },
+                    {
+                        name = "📊 Session Totals",
+                        value = "```py\n# Total Amount\nCoins: " .. CurrentTotalCoins .. "\nGems:  " .. CurrentTotalGems .. "```",
+                        inline = true
+                    }
+                },
+                footer = { text = "Logged for " .. LocalPlayer.Name .. " • TDS AutoStrat" },
+                timestamp = DateTime.now():ToIsoDate()
+            }}
+        }
+
+        pcall(function()
+            SendRequest({
+                Url = Globals.WebhookURL,
+                Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = game:GetService("HttpService"):JSONEncode(PostData)
+            })
         end)
-        if success then break end
-        task.wait(0.2)
     end
+
+    repeat 
+        task.wait(0.5) 
+    until (VR:GetAttribute("Title") == "Restart?" and VR:GetAttribute("Enabled") == true)
+       or (GSR:GetAttribute("Wave") or 0) == 0
+
+    if VR:GetAttribute("Title") == "Restart?" then
+        RunVoteSkip()
+    end
+
+    table.clear(TDS.PlacedTowers)
+    TDS.IsReplaying = true
+
+    repeat task.wait(0.5) until (GSR:GetAttribute("Wave") or 0) == 0
+    task.wait(1) 
+
+    for _, cmd in ipairs(TDS.CommandQueue) do
+        if cmd.Name ~= "GameInfo" and cmd.Name ~= "Mode" then
+            if TDS[cmd.Name] then
+                pcall(function() TDS[cmd.Name](TDS, unpack(cmd.Args)) end)
+                if cmd.Name ~= "Loadout" then task.wait(0.2) end
+            end
+        end
+    end
+
+    TDS.IsReplaying = false
+    PostMatchProcessing = false
 end
 
 local function MatchReadyUp()
-    local PlayerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    local VR = game:GetService("ReplicatedStorage").StateReplicators.VoteReplicator
+    local GSR = game:GetService("ReplicatedStorage").StateReplicators.GameStateReplicator
 
-    local UiOverrides = PlayerGui:WaitForChild("ReactOverridesVote", 30)
-    local MainFrame = UiOverrides and UiOverrides:WaitForChild("Frame", 30)
+    repeat 
+        task.wait(0.5) 
+    until VR:GetAttribute("Title") == "Ready?" and VR:GetAttribute("Enabled") == true
 
-    if not MainFrame then
-        return
-    end
-
-    local VoteReady = nil
-
-    while not VoteReady do
-        local VoteNode = MainFrame:FindFirstChild("votes")
-
-        if VoteNode then
-            local container = VoteNode:FindFirstChild("container")
-            if container then
-                local ready = container:FindFirstChild("ready")
-                if ready then
-                    VoteReady = ready
-                end
-            end
-        end
-
-        if not VoteReady then
-            task.wait(0.5) 
-        end
-    end
-
-    repeat task.wait(0.1) until VoteReady.Visible == true
+    repeat 
+        task.wait(0.5) 
+    until #TDS.PlacedTowers > 0 or TDS.IsReplaying
 
     RunVoteSkip()
 end
@@ -2619,7 +2648,6 @@ local function SelectMapOverride(MapId, ...)
     CastMapVote(MapId, Vector3.new(12.59, 10.64, 52.01))
     task.wait(1)
     LobbyReadyUp()
-    MatchReadyUp()
 end
 
 local function CastModifierVote(ModsTable)
@@ -2812,38 +2840,27 @@ local function TriggerRestart()
     RunVoteSkip()
 end
 
-local function GetCurrentWave()
-    local label
-
-    repeat
-        task.wait(0.5)
-        label = PlayerGui:FindFirstChild("ReactGameTopGameDisplay", true) 
-            and PlayerGui.ReactGameTopGameDisplay.Frame.wave.container:FindFirstChild("value")
-    until label ~= nil
-
-    local text = label.Text
-    local WaveNum = text:match("(%d+)")
-
-    return tonumber(WaveNum) or 0
-end
-
-local function DoPlaceTower(TName, TPos)
+local function DoPlaceTower(TName, TPos, ...)
+    local args = {...}
+    local GSR = game:GetService("ReplicatedStorage").StateReplicators.GameStateReplicator
     Logger:Log("Placing tower: " .. TName)
     while true do
+        if GSR:GetAttribute("GameOver") then return false end
         local ok, res = pcall(function()
             return RemoteFunc:InvokeServer("Troops", "Pl\208\176ce", {
                 Rotation = CFrame.new(),
                 Position = TPos
-            }, TName)
+            }, TName, unpack(args))
         end)
-
         if ok and CheckResOk(res) then return true end
         task.wait(0.25)
     end
 end
 
 local function DoUpgradeTower(TObj, PathId)
+    local GSR = game:GetService("ReplicatedStorage").StateReplicators.GameStateReplicator
     while true do
+        if GSR:GetAttribute("GameOver") then return false end
         local ok, res = pcall(function()
             return RemoteFunc:InvokeServer("Troops", "Upgrade", "Set", {
                 Troop = TObj,
@@ -2856,7 +2873,9 @@ local function DoUpgradeTower(TObj, PathId)
 end
 
 local function DoSellTower(TObj)
+    local GSR = game:GetService("ReplicatedStorage").StateReplicators.GameStateReplicator
     while true do
+        if GSR:GetAttribute("GameOver") then return false end
         local ok, res = pcall(function()
             return RemoteFunc:InvokeServer("Troops", "Sell", { Troop = TObj })
         end)
@@ -2866,11 +2885,12 @@ local function DoSellTower(TObj)
 end
 
 local function DoSetOption(TObj, OptName, OptVal, ReqWave)
+    local GSR = game:GetService("ReplicatedStorage").StateReplicators.GameStateReplicator
     if ReqWave then
-        repeat task.wait(0.3) until GetCurrentWave() >= ReqWave
+        repeat task.wait(0.3) until GetCurrentWave() >= ReqWave or GSR:GetAttribute("GameOver")
     end
-
     while true do
+        if GSR:GetAttribute("GameOver") then return false end
         local ok, res = pcall(function()
             return RemoteFunc:InvokeServer("Troops", "Option", "Set", {
                 Troop = TObj,
@@ -2901,6 +2921,8 @@ local function DoActivateAbility(TObj, AbName, AbData, IsLooping)
 
     local function attempt()
         while true do
+            if GSR:GetAttribute("GameOver") then return false end
+
             local ok, res = pcall(function()
                 local data
 
@@ -2943,7 +2965,7 @@ local function DoActivateAbility(TObj, AbName, AbData, IsLooping)
     if IsLooping then
         local active = true
         task.spawn(function()
-            while active do
+            while active and not GSR:GetAttribute("GameOver") do
                 attempt()
                 task.wait(1)
             end
@@ -3118,6 +3140,8 @@ end
 
 -- ingame
 function TDS:VoteSkip(StartWave, EndWave)
+    RecordCommand("VoteSkip", StartWave, EndWave)
+
     task.spawn(function()
         local CurrentWave = GetCurrentWave()
         
@@ -3203,14 +3227,13 @@ function TDS:StartGame()
 end
 
 function TDS:Ready()
+    RecordCommand("Ready")
+
     if GameState ~= "GAME" then
         return false 
     end
-    MatchReadyUp()
-end
 
-function TDS:GetWave()
-    return GetCurrentWave()
+    task.spawn(MatchReadyUp)
 end
 
 function TDS:WaitForWave(targetWave)
@@ -3226,7 +3249,10 @@ function TDS:RestartGame()
 end
 
 function TDS:Place(TName, px, py, pz, ...)
+    RecordCommand("Place", TName, px, py, pz, ...)
+
     local args = {...}
+    local GSR = game:GetService("ReplicatedStorage").StateReplicators.GameStateReplicator
     local isStacking = args[#args] == "stack" or args[#args] == true
 
     if isStacking and not PremiumLoaded and GameState == "GAME" then
@@ -3250,28 +3276,30 @@ function TDS:Place(TName, px, py, pz, ...)
 
     local existing = {}
     for _, child in ipairs(workspace.Towers:GetChildren()) do
-        for _, SubChild in ipairs(child:GetChildren()) do
-            if SubChild.Name == "Owner" and SubChild.Value == LocalPlayer.UserId then
-                existing[child] = true
-                break
-            end
+        local ownerObj = child:FindFirstChild("Owner")
+        if ownerObj and ownerObj.Value == LocalPlayer.UserId then
+            existing[child] = true
         end
     end
 
-    DoPlaceTower(TName, Vector3.new(px, py, pz))
+    local success = DoPlaceTower(TName, Vector3.new(px, py, pz), unpack(args))
+    if not success then return false end 
 
     local NewT
+    local startTime = os.clock()
     repeat
+        if GSR:GetAttribute("GameOver") then 
+            return false 
+        end
+
         for _, child in ipairs(workspace.Towers:GetChildren()) do
             if not existing[child] then
-                for _, SubChild in ipairs(child:GetChildren()) do
-                    if SubChild.Name == "Owner" and SubChild.Value == LocalPlayer.UserId then
-                        NewT = child
-                        break
-                    end
+                local ownerObj = child:FindFirstChild("Owner")
+                if ownerObj and ownerObj.Value == LocalPlayer.UserId then
+                    NewT = child
+                    break
                 end
             end
-            if NewT then break end
         end
         task.wait(0.05)
     until NewT
@@ -3281,6 +3309,8 @@ function TDS:Place(TName, px, py, pz, ...)
 end
 
 function TDS:Upgrade(idx, PId)
+    RecordCommand("Upgrade", idx, PId)
+
     local t = self.PlacedTowers[idx]
     if t then
         DoUpgradeTower(t, PId or 1)
@@ -3290,6 +3320,8 @@ function TDS:Upgrade(idx, PId)
 end
 
 function TDS:SetTarget(idx, TargetType, ReqWave)
+    RecordCommand("SetTarget", idx, TargetType, ReqWave)
+
     if ReqWave then
         repeat task.wait(0.5) until GetCurrentWave() >= ReqWave
     end
@@ -3307,6 +3339,8 @@ function TDS:SetTarget(idx, TargetType, ReqWave)
 end
 
 function TDS:Sell(idx, ReqWave)
+    RecordCommand("Sell", idx, ReqWave)
+
     if ReqWave then
         repeat task.wait(0.5) until GetCurrentWave() >= ReqWave
     end
@@ -3318,6 +3352,8 @@ function TDS:Sell(idx, ReqWave)
 end
 
 function TDS:SellAll(ReqWave)
+    RecordCommand("SellAll", ReqWave)
+
     task.spawn(function()
         if ReqWave then
             repeat task.wait(0.5) until GetCurrentWave() >= ReqWave
@@ -3340,6 +3376,8 @@ function TDS:SellAll(ReqWave)
 end
 
 function TDS:Ability(idx, name, data, loop)
+    RecordCommand("Ability", idx, name, data, loop)
+
     local t = self.PlacedTowers[idx]
     if not t then return false end
     Logger:Log("Activating ability '" .. name .. "' for tower index: " .. idx)
@@ -3388,6 +3426,8 @@ function TDS:AutoChain(...)
 end
 
 function TDS:SetOption(idx, name, val, ReqWave)
+    RecordCommand("SetOption", idx, name, val, ReqWave)
+
     local t = self.PlacedTowers[idx]
     if t then
         Logger:Log("Setting option '" .. name .. "' for tower index: " .. idx)
@@ -3397,6 +3437,8 @@ function TDS:SetOption(idx, name, val, ReqWave)
 end
 
 function TDS:MedicSelect(idx, val)
+    RecordCommand("MedicSelect", idx, val)
+
     local t = self.PlacedTowers[idx]
     local target = self.PlacedTowers[val]
     if t and target then
@@ -3580,22 +3622,28 @@ end
 local function StartAutoSkip()
     if AutoSkipRunning or not Globals.AutoSkip then return end
     AutoSkipRunning = true
+    local GSR = game:GetService("ReplicatedStorage").StateReplicators.GameStateReplicator
+    local VR = game:GetService("ReplicatedStorage").StateReplicators.VoteReplicator
 
     task.spawn(function()
         while Globals.AutoSkip do
-            local SkipVisible =
-                PlayerGui:FindFirstChild("ReactOverridesVote")
-                and PlayerGui.ReactOverridesVote:FindFirstChild("Frame")
-                and PlayerGui.ReactOverridesVote.Frame:FindFirstChild("votes")
-                and PlayerGui.ReactOverridesVote.Frame.votes:FindFirstChild("vote")
+            local title = VR:GetAttribute("Title")
+            local enabled = VR:GetAttribute("Enabled")
+            local voted = VR:GetAttribute("VoteCount")
+            local max = VR:GetAttribute("MaxVotes")
+            local currentWave = GSR:GetAttribute("Wave") or 0
 
-            if SkipVisible and SkipVisible.Position == UDim2.new(0.5, 0, 0.5, 0) then
-                RunVoteSkip()
+            if enabled == true and voted < max then
+                if title == "Skip Wave?" then
+                    RunVoteSkip()
+                elseif title == "Ready?" then
+                    if currentWave > 0 or #TDS.PlacedTowers > 0 or TDS.IsReplaying then
+                        RunVoteSkip()
+                    end
+                end
             end
-
-            task.wait(1)
+            task.wait(0.5) 
         end
-
         AutoSkipRunning = false
     end)
 end
