@@ -2417,7 +2417,7 @@ mouse.Button1Down:Connect(function()
     if StackEnabled and StackSphere and SelectedTower then
         local pos = StackSphere.Position
         local newpos = Vector3.new(pos.X, pos.Y + 25, pos.Z)
-        RemoteFunc:InvokeServer("Troops", "Pl\208\176ce", {Rotation = CFrame.new(), Position = newpos}, SelectedTower)
+        RemoteFunc:InvokeServer("Troops", "Place", {Rotation = CFrame.new(), Position = newpos}, SelectedTower)
     end
 end)
 
@@ -3053,7 +3053,7 @@ local function DoPlaceTower(TName, TPos, ...)
     Logger:Log("Placing tower: " .. TName)
     while true do
         local ok, res = pcall(function()
-            return RemoteFunc:InvokeServer("Troops", "Pl\208\176ce", {
+            return RemoteFunc:InvokeServer("Troops", "Place", {
                 Rotation = CFrame.new(),
                 Position = TPos
             }, TName, unpack(args))
