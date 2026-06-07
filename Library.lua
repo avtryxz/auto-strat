@@ -1131,6 +1131,15 @@ local Window = Library:Window({
     }
 })
 
+if not LocalPlayer:IsInGroup(4914494) then
+    Window:Notify({
+        Title = "Warning",
+        Desc = "Please consider joining the Paradoxum Group. Otherwise, strategies may not work for you.",
+        Time = 25,
+        Type = "error"
+    })
+end
+
 local Automation = Window:Tab({Title = "Automation", Icon = "bot"}) do
     
     Automation:Section({Title = "Match Progression"})
