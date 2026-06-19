@@ -711,11 +711,19 @@ return function(ctx)
                     current_mode = state_folder.Difficulty.Value
                     current_map = state_folder.Map.Value
                     local mode_obj = state_folder:FindFirstChild("Mode")
-                    if mode_obj and mode_obj.Value == "DuckEvent" then
-                        if current_mode == "Easy" then
-                            current_mode = "DuckyEasy"
-                        elseif current_mode == "Hard" then
-                            current_mode = "DuckyHard"
+                    if mode_obj then
+                        if mode_obj.Value == "Hardcore" then
+                            if current_mode == "Hard" then
+                                current_mode = "Voidcore"
+                            else
+                                current_mode = "Hardcore"
+                            end
+                        elseif mode_obj.Value == "DuckEvent" then
+                            if current_mode == "Easy" then
+                                current_mode = "DuckyEasy"
+                            elseif current_mode == "Hard" then
+                                current_mode = "DuckyHard"
+                            end
                         end
                     end
                     if current_mode == "Trial" or (mode_obj and (mode_obj.Value == "Special" or mode_obj.Value == "DuckEvent")) then
