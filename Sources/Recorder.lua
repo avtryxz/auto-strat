@@ -675,10 +675,18 @@ return function(ctx)
                     local oldNamecallMain
                     oldNamecallMain = hookmetamethod(game, "__namecall", function(self, ...)
                         local method = getnamecallmethod()
-                        if method == "InvokeServer" and typeof(self) == "Instance" and self.ClassName == "RemoteFunction" then
-                            return self.InvokeServer(self, ...)
-                        elseif method == "FireServer" and typeof(self) == "Instance" and (self.ClassName == "RemoteEvent" or self.ClassName == "UnreliableRemoteEvent") then
-                            return self.FireServer(self, ...)
+                        if method == "InvokeServer" or method == "FireServer" then
+                            if typeof(self) == "Instance" and (self.ClassName == "RemoteFunction" or self.ClassName == "RemoteEvent" or self.ClassName == "UnreliableRemoteEvent") then
+                                local args = {...}
+                                local handler = Globals.__tds_recorder_handler
+                                if handler then
+                                    task.spawn(function()
+                                        local set_id = setthreadidentity or setidentity or setthreadcontext
+                                        if set_id then set_id(7) end
+                                        pcall(handler, self, method, args, {true})
+                                    end)
+                                end
+                            end
                         end
                         return oldNamecallMain(self, ...)
                     end)
