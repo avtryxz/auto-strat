@@ -671,49 +671,19 @@ return function(ctx)
 
             if not Globals.__tds_recorder_hooked then
                 Globals.__tds_recorder_hooked = true
-                if hookmetamethod then
-                    local oldNamecallMain
-                    oldNamecallMain = hookmetamethod(game, "__namecall", function(self, ...)
-                        local method = getnamecallmethod()
-                        if method == "InvokeServer" or method == "FireServer" then
-                            if typeof(self) == "Instance" and (self.ClassName == "RemoteFunction" or self.ClassName == "RemoteEvent" or self.ClassName == "UnreliableRemoteEvent") then
-                                local args = {...}
-                                local handler = Globals.__tds_recorder_handler
-                                if handler then
-                                    task.spawn(pcall, handler, self, method, args, {true})
-                                end
+                local original
+                original = hookmetamethod(game, "__namecall", function(self, ...)
+                    local method = getnamecallmethod and getnamecallmethod() or nil
+                    if method == "InvokeServer" or method == "FireServer" then
+                        if typeof(self) == "Instance" and (self.ClassName == "RemoteFunction" or self.ClassName == "RemoteEvent" or self.ClassName == "UnreliableRemoteEvent") then
+                            local args = {...}
+                            local handler = Globals.__tds_recorder_handler
+                            if handler then
+                                task.spawn(pcall, handler, self, method, args, {true})
                             end
                         end
-                        return oldNamecallMain(self, ...)
-                    end)
-                end
-                local originalFire
-                originalFire = hookfunction(Instance.new("RemoteEvent").FireServer, function(self, ...)
-                    local args = {...}
-                    local results = table.pack(originalFire(self, ...))
-                    local handler = Globals.__tds_recorder_handler
-                    if handler then
-                        task.spawn(function()
-                            local set_id = setthreadidentity or setidentity or setthreadcontext
-                            if set_id then set_id(7) end
-                            pcall(handler, self, "FireServer", args, results)
-                        end)
                     end
-                    return table.unpack(results, 1, results.n)
-                end)
-                local originalInvoke
-                originalInvoke = hookfunction(Instance.new("RemoteFunction").InvokeServer, function(self, ...)
-                    local args = {...}
-                    local results = table.pack(originalInvoke(self, ...))
-                    local handler = Globals.__tds_recorder_handler
-                    if handler then
-                        task.spawn(function()
-                            local set_id = setthreadidentity or setidentity or setthreadcontext
-                            if set_id then set_id(7) end
-                            pcall(handler, self, "InvokeServer", args, results)
-                        end)
-                    end
-                    return table.unpack(results, 1, results.n)
+                    return original(self, ...)
                 end)
             end
         end
