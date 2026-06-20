@@ -680,11 +680,7 @@ return function(ctx)
                                 local args = {...}
                                 local handler = Globals.__tds_recorder_handler
                                 if handler then
-                                    task.spawn(function()
-                                        local set_id = setthreadidentity or setidentity or setthreadcontext
-                                        if set_id then set_id(7) end
-                                        pcall(handler, self, method, args, {true})
-                                    end)
+                                    task.spawn(pcall, handler, self, method, args, {true})
                                 end
                             end
                         end
