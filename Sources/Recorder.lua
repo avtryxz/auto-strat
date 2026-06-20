@@ -498,14 +498,6 @@ return function(ctx)
                 local my_index = resolve_tower_index(tower)
                 local path = a4.Path or 1
 
-                print("[Recorder Debug] Upgrade Intercepted! Tower:", tower and tower.Name or "nil", "Path:", path)
-                print("[Recorder Debug] Resolved Index:", tostring(my_index))
-                if results then
-                    print("[Recorder Debug] Results returned. results[1]:", tostring(results[1]), "results.n:", tostring(results.n))
-                else
-                    print("[Recorder Debug] Results is nil!")
-                end
-
                 if my_index and tower and results and results[1] == true then
                     local replicator = tower:FindFirstChild("TowerReplicator")
                     local tower_name = replicator and replicator:GetAttribute("Name") or tower.Name
@@ -515,8 +507,6 @@ return function(ctx)
                     record_line(cmd, "Upgraded " .. tower_name .. " (Index: " .. my_index .. ")")
                     handled = true
                     return
-                else
-                    print("[Recorder Debug] Check failed: my_index =", tostring(my_index), "tower =", tostring(tower), "results[1] =", tostring(results and results[1]))
                 end
             end
         end
@@ -681,102 +671,6 @@ return function(ctx)
 
             if not Globals.__tds_recorder_hooked then
                 Globals.__tds_recorder_hooked = true
-                
-                -- Setup Actor Relay BindableEvent
-                local relay = replicated_storage:FindFirstChild("TDS_Recorder_ActorRelay")
-                if not relay then
-                    relay = Instance.new("BindableEvent")
-                    relay.Name = "TDS_Recorder_ActorRelay"
-                    relay.Parent = replicated_storage
-                end
-                
-                relay.Event:Connect(function(remote, method, args, results)
-                    local handler = Globals.__tds_recorder_handler
-                    if handler then
-                        task.spawn(function()
-                            local set_id = setthreadidentity or setidentity or setthreadcontext
-                            if set_id then set_id(7) end
-                            pcall(handler, remote, method, args, results)
-                        end)
-                    end
-                end)
-
-                -- Function to hook an Actor
-                local function HookActor(actor)
-                    local Code = [[
-                        local getgenv = getgenv or function() return _G end
-                        if getgenv().__tds_actor_hooked then return end
-                        getgenv().__tds_actor_hooked = true
-                        
-                        local replicated_storage = game:GetService("ReplicatedStorage")
-                        local relay = replicated_storage:WaitForChild("TDS_Recorder_ActorRelay", 10)
-                        if not relay then return end
-                        
-                        local fireEvent = relay.Fire
-
-                        local function relayCall(remote, method, args, results)
-                            pcall(fireEvent, relay, remote, method, args, results) -- Dot notation to prevent namecall override
-                        end
-
-                        -- Hook namecall inside Actor
-                        if hookmetamethod then
-                            local oldNamecall
-                            oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-                                local method = getnamecallmethod()
-                                if method == "InvokeServer" or method == "FireServer" then
-                                    local args = {...}
-                                    local results = table.pack(oldNamecall(self, ...))
-                                    relayCall(self, method, args, results)
-                                    return table.unpack(results, 1, results.n)
-                                end
-                                return oldNamecall(self, ...)
-                            end)
-                        end
-
-                        -- Hook functions inside Actor (fallback)
-                        local originalInvoke
-                        originalInvoke = hookfunction(Instance.new("RemoteFunction").InvokeServer, function(self, ...)
-                            local args = {...}
-                            local results = table.pack(originalInvoke(self, ...))
-                            relayCall(self, "InvokeServer", args, results)
-                            return table.unpack(results, 1, results.n)
-                        end)
-
-                        local originalFire
-                        originalFire = hookfunction(Instance.new("RemoteEvent").FireServer, function(self, ...)
-                            local args = {...}
-                            local results = table.pack(originalFire(self, ...))
-                            relayCall(self, "FireServer", args, results)
-                            return table.unpack(results, 1, results.n)
-                        end)
-                    ]]
-                    pcall(run_on_actor, actor, Code)
-                end
-
-                -- Hook existing and future actors
-                if type(getactors) == "function" and type(run_on_actor) == "function" then
-                    for _, actor in ipairs(getactors()) do
-                        task.spawn(HookActor, actor)
-                    end
-                    
-                    if typeof(on_actor_created) == "function" then
-                        on_actor_created(function(actor)
-                            task.spawn(HookActor, actor)
-                        end)
-                    elseif type(on_actor_state_created) == "function" then
-                        on_actor_state_created:Connect(function(actor)
-                            task.spawn(HookActor, actor)
-                        end)
-                    else
-                        game.DescendantAdded:Connect(function(desc)
-                            if desc:IsA("Actor") then
-                                task.spawn(HookActor, desc)
-                            end
-                        end)
-                    end
-                end
-
-                -- Hook __namecall in Main VM
                 if hookmetamethod then
                     local oldNamecallMain
                     oldNamecallMain = hookmetamethod(game, "__namecall", function(self, ...)
@@ -797,8 +691,6 @@ return function(ctx)
                         return oldNamecallMain(self, ...)
                     end)
                 end
-
-                -- Hook RemoteEvent:FireServer in Main VM (fallback)
                 local originalFire
                 originalFire = hookfunction(Instance.new("RemoteEvent").FireServer, function(self, ...)
                     local args = {...}
@@ -813,8 +705,6 @@ return function(ctx)
                     end
                     return table.unpack(results, 1, results.n)
                 end)
-
-                -- Hook RemoteFunction:InvokeServer in Main VM (fallback)
                 local originalInvoke
                 originalInvoke = hookfunction(Instance.new("RemoteFunction").InvokeServer, function(self, ...)
                     local args = {...}
