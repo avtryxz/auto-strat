@@ -675,9 +675,9 @@ return function(ctx)
                     local oldNamecallMain
                     oldNamecallMain = hookmetamethod(game, "__namecall", function(self, ...)
                         local method = getnamecallmethod()
-                        if method == "InvokeServer" then
+                        if method == "InvokeServer" and typeof(self) == "Instance" and self.ClassName == "RemoteFunction" then
                             return self.InvokeServer(self, ...)
-                        elseif method == "FireServer" then
+                        elseif method == "FireServer" and typeof(self) == "Instance" and (self.ClassName == "RemoteEvent" or self.ClassName == "UnreliableRemoteEvent") then
                             return self.FireServer(self, ...)
                         end
                         return oldNamecallMain(self, ...)
