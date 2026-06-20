@@ -712,13 +712,33 @@ return function(ctx)
                         local relay = replicated_storage:WaitForChild("TDS_Recorder_ActorRelay", 10)
                         if not relay then return end
                         
+                        local fireEvent = relay.Fire
+
+                        local function relayCall(remote, method, args, results)
+                            pcall(fireEvent, relay, remote, method, args, results) -- Dot notation to prevent namecall override
+                        end
+
+                        -- Hook namecall inside Actor
+                        if hookmetamethod then
+                            local oldNamecall
+                            oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+                                local method = getnamecallmethod()
+                                if method == "InvokeServer" or method == "FireServer" then
+                                    local args = {...}
+                                    local results = table.pack(oldNamecall(self, ...))
+                                    relayCall(self, method, args, results)
+                                    return table.unpack(results, 1, results.n)
+                                end
+                                return oldNamecall(self, ...)
+                            end)
+                        end
+
+                        -- Hook functions inside Actor (fallback)
                         local originalInvoke
                         originalInvoke = hookfunction(Instance.new("RemoteFunction").InvokeServer, function(self, ...)
                             local args = {...}
                             local results = table.pack(originalInvoke(self, ...))
-                            pcall(function()
-                                relay:Fire(self, "InvokeServer", args, results)
-                            end)
+                            relayCall(self, "InvokeServer", args, results)
                             return table.unpack(results, 1, results.n)
                         end)
 
@@ -726,9 +746,7 @@ return function(ctx)
                         originalFire = hookfunction(Instance.new("RemoteEvent").FireServer, function(self, ...)
                             local args = {...}
                             local results = table.pack(originalFire(self, ...))
-                            pcall(function()
-                                relay:Fire(self, "FireServer", args, results)
-                            end)
+                            relayCall(self, "FireServer", args, results)
                             return table.unpack(results, 1, results.n)
                         end)
                     ]]
@@ -758,7 +776,29 @@ return function(ctx)
                     end
                 end
 
-                -- Hook RemoteEvent:FireServer in Main VM
+                -- Hook __namecall in Main VM
+                if hookmetamethod then
+                    local oldNamecallMain
+                    oldNamecallMain = hookmetamethod(game, "__namecall", function(self, ...)
+                        local method = getnamecallmethod()
+                        if method == "InvokeServer" or method == "FireServer" then
+                            local args = {...}
+                            local results = table.pack(oldNamecallMain(self, ...))
+                            local handler = Globals.__tds_recorder_handler
+                            if handler then
+                                task.spawn(function()
+                                    local set_id = setthreadidentity or setidentity or setthreadcontext
+                                    if set_id then set_id(7) end
+                                    pcall(handler, self, method, args, results)
+                                end)
+                            end
+                            return table.unpack(results, 1, results.n)
+                        end
+                        return oldNamecallMain(self, ...)
+                    end)
+                end
+
+                -- Hook RemoteEvent:FireServer in Main VM (fallback)
                 local originalFire
                 originalFire = hookfunction(Instance.new("RemoteEvent").FireServer, function(self, ...)
                     local args = {...}
@@ -774,7 +814,7 @@ return function(ctx)
                     return table.unpack(results, 1, results.n)
                 end)
 
-                -- Hook RemoteFunction:InvokeServer in Main VM
+                -- Hook RemoteFunction:InvokeServer in Main VM (fallback)
                 local originalInvoke
                 originalInvoke = hookfunction(Instance.new("RemoteFunction").InvokeServer, function(self, ...)
                     local args = {...}
