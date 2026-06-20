@@ -675,18 +675,10 @@ return function(ctx)
                     local oldNamecallMain
                     oldNamecallMain = hookmetamethod(game, "__namecall", function(self, ...)
                         local method = getnamecallmethod()
-                        if method == "InvokeServer" or method == "FireServer" then
-                            local args = {...}
-                            local results = table.pack(oldNamecallMain(self, ...))
-                            local handler = Globals.__tds_recorder_handler
-                            if handler then
-                                task.spawn(function()
-                                    local set_id = setthreadidentity or setidentity or setthreadcontext
-                                    if set_id then set_id(7) end
-                                    pcall(handler, self, method, args, results)
-                                end)
-                            end
-                            return table.unpack(results, 1, results.n)
+                        if method == "InvokeServer" then
+                            return self.InvokeServer(self, ...)
+                        elseif method == "FireServer" then
+                            return self.FireServer(self, ...)
                         end
                         return oldNamecallMain(self, ...)
                     end)
