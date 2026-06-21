@@ -102,6 +102,11 @@ return function(ctx)
         return tostring(n)
     end
 
+    local function round(n) 
+        if type(n) ~= "number" then return n end
+        return math.round(n * 1000000) / 1000000
+    end
+
     local serialize_value
     local serialize_value_raw
     local serialize_table
@@ -146,15 +151,15 @@ return function(ctx)
         elseif t == "Vector3" then
             return string.format(
                 "Vector3.new(%s, %s, %s)",
-                num_to_str(v.X),
-                num_to_str(v.Y),
-                num_to_str(v.Z)
+                num_to_str(round(v.X)),
+                num_to_str(round(v.Y)),
+                num_to_str(round(v.Z))
             )
         elseif t == "CFrame" then
             local comps = {v:GetComponents()}
             local parts = {}
             for i = 1, #comps do
-                parts[i] = num_to_str(comps[i])
+                parts[i] = num_to_str(round(comps[i]))
             end
             return "CFrame.new(" .. table.concat(parts, ", ") .. ")"
         elseif t == "Instance" then
@@ -186,15 +191,15 @@ return function(ctx)
         elseif t == "Vector3" then
             return string.format(
                 "Vector3.new(%s, %s, %s)",
-                num_to_str(v.X),
-                num_to_str(v.Y),
-                num_to_str(v.Z)
+                num_to_str(round(v.X)),
+                num_to_str(round(v.Y)),
+                num_to_str(round(v.Z))
             )
         elseif t == "CFrame" then
             local comps = {v:GetComponents()}
             local parts = {}
             for i = 1, #comps do
-                parts[i] = num_to_str(comps[i])
+                parts[i] = num_to_str(round(comps[i]))
             end
             return "CFrame.new(" .. table.concat(parts, ", ") .. ")"
         elseif t == "Instance" then
@@ -492,25 +497,6 @@ return function(ctx)
             end
         end
 
-        if a1 == "Troops" and a2 == "Upgrade" and a3 == "Set" then
-            if type(a4) == "table" then
-                local tower = a4.Troop
-                local my_index = resolve_tower_index(tower)
-                local path = a4.Path or 1
-
-                if my_index and tower and results and results[1] == true then
-                    local replicator = tower:FindFirstChild("TowerReplicator")
-                    local tower_name = replicator and replicator:GetAttribute("Name") or tower.Name
-
-                    local cmd = (path > 1) and string.format("TDS:Upgrade(%d, %d)", my_index, path) or string.format("TDS:Upgrade(%d)", my_index)
-            
-                    record_line(cmd, "Upgraded " .. tower_name .. " (Index: " .. my_index .. ")")
-                    handled = true
-                    return
-                end
-            end
-        end
-
         if a1 == "Troops" and a2 == "Option" and a3 == "Set" then
             if type(a4) == "table" then
                 local idx = resolve_tower_index(a4.Troop)
@@ -547,7 +533,7 @@ return function(ctx)
             if current_wave == 0 then
                 record_line("TDS:Ready()", "Readied up for the match")
             else
-                record_line("TDS:VoteSkip(" .. current_wave .. ")", "Voted to skip wave " .. current_wave)
+                record_line("TDS:VoteSkip()", "Voted to skip wave")
             end
             handled = true
             return
@@ -664,150 +650,39 @@ return function(ctx)
             Size = UDim2.new(0, 330, 0, 230)
         })
 
-        if has_hook then
-            Globals.__tds_recorder_handler = function(remote, method, args, results)
-                handle_namecall(remote, method, args, results)
-            end
 
-            if not Globals.__tds_recorder_hooked then
-                Globals.__tds_recorder_hooked = true
-                local relay = replicated_storage:FindFirstChild("TDS_Recorder_ActorRelay")
-                if not relay then
-                    relay = Instance.new("BindableEvent")
-                    relay.Name = "TDS_Recorder_ActorRelay"
-                    relay.Parent = replicated_storage
-                end
-                relay.Event:Connect(function(remote, method, args, results)
-                    local handler = Globals.__tds_recorder_handler
-                    if handler then
-                        task.spawn(function()
-                            local set_id = setthreadidentity or setidentity or setthreadcontext
-                            if set_id then set_id(7) end
-                            pcall(handler, remote, method, args, results)
-                        end)
-                    end
-                end)
-                local function HookActor(actor)
-                    local Code = [[
-                        local getgenv = getgenv or function() return _G end
-                        if getgenv().__tds_actor_hooked then return end
-                        getgenv().__tds_actor_hooked = true
-                        local replicated_storage = game:GetService("ReplicatedStorage")
-                        local relay = replicated_storage:WaitForChild("TDS_Recorder_ActorRelay", 10)
-                        if not relay then return end
-                        local fireEvent = relay.Fire
-                        local function relayCall(remote, method, args, results)
-                            pcall(fireEvent, relay, remote, method, args, results)
-                        end
-                        if hookmetamethod then
-                            local oldNamecall
-                            oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-                                local method = getnamecallmethod()
-                                if method == "InvokeServer" or method == "FireServer" then
-                                    local args = {...}
-                                    local results = table.pack(oldNamecall(self, ...))
-                                    relayCall(self, method, args, results)
-                                    return table.unpack(results, 1, results.n)
-                                end
-                                return oldNamecall(self, ...)
-                            end)
-                        end
-                        local originalInvoke
-                        originalInvoke = hookfunction(Instance.new("RemoteFunction").InvokeServer, function(self, ...)
-                            local args = {...}
-                            local results = table.pack(originalInvoke(self, ...))
-                            relayCall(self, "InvokeServer", args, results)
-                            return table.unpack(results, 1, results.n)
-                        end)
-                        local originalFire
-                        originalFire = hookfunction(Instance.new("RemoteEvent").FireServer, function(self, ...)
-                            local args = {...}
-                            local results = table.pack(originalFire(self, ...))
-                            relayCall(self, "FireServer", args, results)
-                            return table.unpack(results, 1, results.n)
-                        end)
-                    ]]
-                    pcall(run_on_actor, actor, Code)
-                end
-                if type(getactors) == "function" and type(run_on_actor) == "function" then
-                    for _, actor in ipairs(getactors()) do
-                        task.spawn(HookActor, actor)
-                    end
-                    if typeof(on_actor_created) == "function" then
-                        on_actor_created(function(actor)
-                            task.spawn(HookActor, actor)
-                        end)
-                    elseif type(on_actor_state_created) == "function" then
-                        on_actor_state_created:Connect(function(actor)
-                            task.spawn(HookActor, actor)
-                        end)
-                    else
-                        game.DescendantAdded:Connect(function(desc)
-                            if desc:IsA("Actor") then
-                                task.spawn(HookActor, desc)
-                            end
-                        end)
-                    end
-                end
-                if hookmetamethod then
-                    local oldNamecallMain
-                    oldNamecallMain = hookmetamethod(game, "__namecall", function(self, ...)
-                        local method = getnamecallmethod()
-                        if method == "InvokeServer" or method == "FireServer" then
-                            if typeof(self) == "Instance" and (self.ClassName == "RemoteFunction" or self.ClassName == "RemoteEvent" or self.ClassName == "UnreliableRemoteEvent") then
-                                local args = {...}
-                                local handler = Globals.__tds_recorder_handler
-                                if handler then
-                                    task.spawn(pcall, handler, self, method, args, {true})
-                                end
-                            end
-                        end
-                        return oldNamecallMain(self, ...)
-                    end)
-                end
-                local originalFire
-                originalFire = hookfunction(Instance.new("RemoteEvent").FireServer, function(self, ...)
-                    local args = {...}
-                    local results = table.pack(originalFire(self, ...))
-                    local handler = Globals.__tds_recorder_handler
-                    if handler then
-                        task.spawn(function()
-                            local set_id = setthreadidentity or setidentity or setthreadcontext
-                            if set_id then set_id(7) end
-                            pcall(handler, self, "FireServer", args, results)
-                        end)
-                    end
-                    return table.unpack(results, 1, results.n)
-                end)
-                local originalInvoke
-                originalInvoke = hookfunction(Instance.new("RemoteFunction").InvokeServer, function(self, ...)
-                    local args = {...}
-                    local results = table.pack(originalInvoke(self, ...))
-                    local handler = Globals.__tds_recorder_handler
-                    if handler then
-                        task.spawn(function()
-                            local set_id = setthreadidentity or setidentity or setthreadcontext
-                            if set_id then set_id(7) end
-                            pcall(handler, self, "InvokeServer", args, results)
-                        end)
-                    end
-                    return table.unpack(results, 1, results.n)
-                end)
-            end
-        end
 
         RecorderTab:Button({
             Title = "START",
             Desc = "",
             Callback = function()
                 Recorder:Clear()
-
-                if not has_hook then
-                    Recorder:Log("\nYour executor is not supported for recording and is \nonly meant for replaying strats.")
-                    return
-                end
-
                 Recorder:Log("Recorder started")
+
+                if has_hook then
+                    Globals.__tds_recorder_handler = function(remote, method, args, results)
+                        handle_namecall(remote, method, args, results)
+                    end
+
+                    if not Globals.__tds_recorder_hooked then
+                        Globals.__tds_recorder_hooked = true
+                        local original
+                        original = hookmetamethod(game, "__namecall", function(self, ...)
+                            local method = getnamecallmethod and getnamecallmethod() or nil
+                            local args = {...}
+                            local results = table.pack(original(self, ...))
+                            local handler = Globals.__tds_recorder_handler
+                            if handler and method then
+                                task.spawn(function()
+                                    local set_id = setthreadidentity or setidentity or setthreadcontext
+                                    if set_id then set_id(7) end
+                                    pcall(handler, self, method, args, results)
+                                end)
+                            end
+                            return table.unpack(results, 1, results.n)
+                        end)
+                    end
+                end
 
                 local current_mode = "Unknown"
                 local current_map = "Unknown"
@@ -817,23 +692,7 @@ return function(ctx)
                 if state_folder then
                     current_mode = state_folder.Difficulty.Value
                     current_map = state_folder.Map.Value
-                    local mode_obj = state_folder:FindFirstChild("Mode")
-                    if mode_obj then
-                        if mode_obj.Value == "Hardcore" then
-                            if current_mode == "Hard" then
-                                current_mode = "Voidcore"
-                            else
-                                current_mode = "Hardcore"
-                            end
-                        elseif mode_obj.Value == "DuckEvent" then
-                            if current_mode == "Easy" then
-                                current_mode = "DuckyEasy"
-                            elseif current_mode == "Hard" then
-                                current_mode = "DuckyHard"
-                            end
-                        end
-                    end
-                    if current_mode == "Trial" or (mode_obj and (mode_obj.Value == "Special" or mode_obj.Value == "DuckEvent")) then
+                    if current_mode == "Trial" or (state_folder:FindFirstChild("Mode") and state_folder.Mode.Value == "Special") then
                         skip_game_info = true
                     end
                 end
@@ -892,6 +751,11 @@ return function(ctx)
                 sync_existing_towers()
                 last_wave = 0
                 Globals.record_strat = true
+                if has_hook then
+                    Recorder:Log("Extended recording enabled")
+                else
+                    Recorder:Log("Limited recording (place/upgrade/sell)")
+                end
 
                 if writefile then
                     local game_info_str = ""
@@ -923,16 +787,14 @@ TDS:Mode("%s")%s
             Desc = "",
             Callback = function()
                 Globals.record_strat = false
-                if has_hook then
-                    Recorder:Clear()
-                    Recorder:Log("Strategy saved, you may find it in \nyour workspace folder called 'Strat.txt'")
-                    Window:Notify({
-                        Title = "ADS",
-                        Desc = "Recording has been saved! Check your workspace folder for Strat.txt",
-                        Time = 3,
-                        Type = "normal"
-                    })
-                end
+                Recorder:Clear()
+                Recorder:Log("Strategy saved, you may find it in \nyour workspace folder called 'Strat.txt'")
+                Window:Notify({
+                    Title = "ADS",
+                    Desc = "Recording has been saved! Check your workspace folder for Strat.txt",
+                    Time = 3,
+                    Type = "normal"
+                })
             end
         })
 
@@ -964,6 +826,8 @@ TDS:Mode("%s")%s
                     local p = tower:GetPivot().Position
                     pos_x, pos_y, pos_z = p.X, p.Y, p.Z
                 end
+
+                pos_x, pos_y, pos_z = round(pos_x), round(pos_y), round(pos_z)
                 
                 local command
                 if Globals.StackEnabled then
@@ -974,6 +838,11 @@ TDS:Mode("%s")%s
                 record_action(command)
                 Recorder:Log("Placed " .. tower_name .. " (Index: " .. my_index .. ")")
 
+                replicator:GetAttributeChangedSignal("Upgrade"):Connect(function()
+                    if not Globals.record_strat then return end
+                    record_action(string.format('TDS:Upgrade(%d)', my_index))
+                    Recorder:Log("Upgraded Tower " .. my_index)
+                end)
             end)
 
             towers_folder.ChildRemoved:Connect(function(tower)
