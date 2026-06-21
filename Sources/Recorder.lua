@@ -669,22 +669,41 @@ return function(ctx)
                 handle_namecall(remote, method, args, results)
             end
 
-            if not Globals.__tds_recorder_hooked then
-                Globals.__tds_recorder_hooked = true
-                local original
-                original = hookmetamethod(game, "__namecall", function(self, ...)
-                    local method = getnamecallmethod and getnamecallmethod() or nil
-                    if method == "InvokeServer" or method == "FireServer" then
-                        if typeof(self) == "Instance" and (self.ClassName == "RemoteFunction" or self.ClassName == "RemoteEvent" or self.ClassName == "UnreliableRemoteEvent") then
-                            local args = {...}
-                            local handler = Globals.__tds_recorder_handler
-                            if handler then
-                                task.spawn(pcall, handler, self, method, args, {true})
-                            end
+                        if not Globals.__tds_recorder_hooked then
+                local namecall
+                namecall = hookmetamethod(game, "__namecall", function (self, ...)
+                    local method = getnamecallmethod()
+
+                    if method == "FireServer" then
+                        local args = {...}
+                        local results = table.pack(namecall(self,...))
+                        local handler = Globals.__tds_recorder_handler
+
+                        if handler then
+                            task.spawn(function()
+                                local set_id = setthreadidentity or setidentity or setthreadcontext
+                                if set_id then set_id(7) end
+                                pcall(handler, self, "FireServer", args, results)
+                            end)
                         end
+                        return table.unpack(results, 1, results.n)
+                    elseif method == "InvokeServer" then
+                        local args = {...}
+                        local results = table.pack(namecall(self, ...))
+                        local handler = Globals.__tds_recorder_handler
+                        if handler then
+                            task.spawn(function()
+                                local set_id = setthreadidentity or setidentity or setthreadcontext
+                                if set_id then set_id(7) end
+                                pcall(handler, self, "InvokeServer", args, results)
+                            end)
+                        end
+                        return table.unpack(results, 1, results.n)
+                    else
+                        return namecall(self, ...)
                     end
-                    return original(self, ...)
                 end)
+                Globals.__tds_recorder_hooked = true
             end
         end
 
