@@ -669,17 +669,16 @@ return function(ctx)
                         local original
                         original = hookmetamethod(game, "__namecall", function(self, ...)
                             local method = getnamecallmethod and getnamecallmethod() or nil
-                            local args = {...}
-                            local results = table.pack(original(self, ...))
-                            local handler = Globals.__tds_recorder_handler
-                            if handler and method then
-                                task.spawn(function()
-                                    local set_id = setthreadidentity or setidentity or setthreadcontext
-                                    if set_id then set_id(7) end
-                                    pcall(handler, self, method, args, results)
-                                end)
+                            if method == "InvokeServer" or method == "FireServer" then
+                                if typeof(self) == "Instance" and (self.ClassName == "RemoteFunction" or self.ClassName == "RemoteEvent" or self.ClassName == "UnreliableRemoteEvent") then
+                                    local args = {...}
+                                    local handler = Globals.__tds_recorder_handler
+                                    if handler then
+                                        task.spawn(pcall, handler, self, method, args, {true})
+                                    end
+                                end
                             end
-                            return table.unpack(results, 1, results.n)
+                            return original(self, ...)
                         end)
                     end
                 end
