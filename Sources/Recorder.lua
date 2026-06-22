@@ -461,6 +461,9 @@ return function(ctx)
             end
             
             if type(a4) == "table" then
+                if results and results[1] == false then
+                    return
+                end
                 local idx = resolve_tower_index(a4.Troop)
                 local name = a4.Name
                 if idx and type(name) == "string" then
