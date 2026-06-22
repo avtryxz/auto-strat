@@ -688,10 +688,12 @@ return function(ctx)
                             if method == "InvokeServer" or method == "FireServer" then
                                 if typeof(self) == "Instance" and (self.ClassName == "RemoteFunction" or self.ClassName == "RemoteEvent" or self.ClassName == "UnreliableRemoteEvent") then
                                     local args = {...}
+                                    local results = table.pack(original(self, ...))
                                     local handler = Globals.__tds_recorder_handler
                                     if handler then
-                                        task.spawn(pcall, handler, self, method, args, {true})
+                                        task.spawn(pcall, handler, self, method, args, results)
                                     end
+                                    return table.unpack(results, 1, results.n)
                                 end
                             end
                             return original(self, ...)
