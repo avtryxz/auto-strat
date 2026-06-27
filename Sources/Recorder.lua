@@ -702,32 +702,26 @@ return function(ctx)
                         local original
                         original = hookmetamethod(game, "__namecall", function(self, ...)
                             local method = getnamecallmethod and getnamecallmethod() or nil
-                            if method == "InvokeServer" or method == "FireServer" then
-                                local isRemote = false
-                                pcall(function()
-                                    if typeof(self) == "Instance" and (self:IsA("RemoteFunction") or self:IsA("RemoteEvent") or self:IsA("UnreliableRemoteEvent")) then
-                                        isRemote = true
-                                    end
-                                end)
-                                
-                                if isRemote then
-                                    local args = {...}
-                                    local handler = Globals.__tds_recorder_handler
-                                    if handler then
-                                        task.spawn(function()
-                                            local set_id = setidentity or setthreadidentity or set_thread_identity or setthreadcontext
-                                            if set_id then
-                                                pcall(set_id, 7)
-                                            end
-                                            pcall(handler, self, method, args, {true})
-                                        end)
-                                    end
+                            if method and setnamecallmethod then setnamecallmethod(method) end
+                            
+                            local results = table.pack(pcall(original, self, ...))
+                            
+                            if (method == "InvokeServer" or method == "FireServer") and typeof(self) == "Instance" and (self:IsA("RemoteFunction") or self:IsA("RemoteEvent") or self:IsA("UnreliableRemoteEvent")) then
+                                local args, handler = {...}, Globals.__tds_recorder_handler
+                                if handler and results[1] then
+                                    task.spawn(function()
+                                        local set_id = setidentity or setthreadidentity or set_thread_identity or setthreadcontext
+                                        if set_id then pcall(set_id, 7) end
+                                        
+                                        local resultsData = {unpack(results, 2, results.n)}
+                                        resultsData.n = results.n - 1
+                                        pcall(handler, self, method, args, resultsData)
+                                    end)
                                 end
                             end
-                            if method and setnamecallmethod then
-                                setnamecallmethod(method)
-                            end
-                            return original(self, ...)
+                            
+                            if results[1] then return unpack(results, 2, results.n) end
+                            error(results[2])
                         end)
                     end
                 end
