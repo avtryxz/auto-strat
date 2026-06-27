@@ -495,6 +495,23 @@ return function(ctx)
         if a1 == "Troops" and a2 == "Upgrade" and a3 == "Set" then
             if type(a4) == "table" then
                 local tower = a4.Troop
+                pcall(function()
+                    if appendfile then
+                        local dbg = "\n--- UPGRADE DEBUG ---\n"
+                        dbg = dbg .. "Upgrade Remote Triggered!\n"
+                        dbg = dbg .. "Tower Instance: " .. (typeof(tower) == "Instance" and tower:GetFullName() or tostring(tower)) .. "\n"
+                        dbg = dbg .. "Results table: " .. tostring(results) .. "\n"
+                        if results then
+                            dbg = dbg .. "  results[1]: " .. tostring(results[1]) .. "\n"
+                        end
+                        dbg = dbg .. "Tracked Towers in spawned_towers:\n"
+                        for t_inst, idx in pairs(spawned_towers) do
+                            dbg = dbg .. string.format("  - [%s] = %s\n", typeof(t_inst) == "Instance" and t_inst:GetFullName() or tostring(t_inst), tostring(idx))
+                        end
+                        dbg = dbg .. "---------------------\n"
+                        appendfile("RawRemoteLog.txt", dbg)
+                    end
+                end)
                 local my_index = resolve_tower_index(tower)
                 local path = a4.Path or 1
 
@@ -697,7 +714,13 @@ return function(ctx)
                                     local args = {...}
                                     local handler = Globals.__tds_recorder_handler
                                     if handler then
-                                        task.spawn(pcall, handler, self, method, args, {true})
+                                        task.spawn(function()
+                                            local set_id = setidentity or setthreadidentity or set_thread_identity or setthreadcontext
+                                            if set_id then
+                                                pcall(set_id, 7)
+                                            end
+                                            pcall(handler, self, method, args, {true})
+                                        end)
                                     end
                                 end
                             end
