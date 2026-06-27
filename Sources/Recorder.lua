@@ -683,18 +683,54 @@ return function(ctx)
                     if not Globals.__tds_recorder_hooked then
                         Globals.__tds_recorder_hooked = true
                         local original
-                        original = hookmetamethod(game, "__namecall", function(self, ...)
+                        original = hookmetamethod(game, "__namecall", function(...)
+                            local self = ...
                             local method = getnamecallmethod and getnamecallmethod() or nil
                             if method == "InvokeServer" or method == "FireServer" then
-                                if typeof(self) == "Instance" and (self.ClassName == "RemoteFunction" or self.ClassName == "RemoteEvent" or self.ClassName == "UnreliableRemoteEvent") then
-                                    local args = {...}
+                                local isRemote = false
+                                pcall(function()
+                                    if typeof(self) == "Instance" and (self:IsA("RemoteFunction") or self:IsA("RemoteEvent") or self:IsA("UnreliableRemoteEvent")) then
+                                        isRemote = true
+                                    end
+                                end)
+                                
+                                if isRemote then
+                                    local args = {select(2, ...)}
+                                    local thread = coroutine.running()
+                                    local returndata
+                                    task.spawn(function()
+                                        setnamecallmethod(method)
+                                        local results = table.pack(pcall(original, ...))
+                                        if results[1] then
+                                            local resultsData = {}
+                                            for i = 2, results.n do
+                                                resultsData[i - 1] = results[i]
+                                            end
+                                            resultsData.n = results.n - 1
+                                            returndata = resultsData
+                                        else
+                                            returndata = {}
+                                        end
+                                        if coroutine.status(thread) ~= "dead" then
+                                            coroutine.resume(thread)
+                                        end
+                                    end)
+                                    coroutine.yield()
+                                    
                                     local handler = Globals.__tds_recorder_handler
                                     if handler then
-                                        task.spawn(pcall, handler, self, method, args, {true})
+                                        task.spawn(pcall, handler, self, method, args, returndata)
+                                    end
+                                    
+                                    if returndata then
+                                        return table.unpack(returndata, 1, returndata.n)
                                     end
                                 end
                             end
-                            return original(self, ...)
+                            if method and setnamecallmethod then
+                                setnamecallmethod(method)
+                            end
+                            return original(...)
                         end)
                     end
                 end
