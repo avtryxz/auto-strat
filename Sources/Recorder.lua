@@ -49,14 +49,18 @@ return function(ctx)
             return nil
         end
 
-        if spawned_towers[tower] then
-            return spawned_towers[tower]
+        for t_inst, idx in pairs(spawned_towers) do
+            if t_inst == tower then
+                return idx
+            end
         end
 
         local current = tower.Parent
         while current do
-            if spawned_towers[current] then
-                return spawned_towers[current]
+            for t_inst, idx in pairs(spawned_towers) do
+                if t_inst == current then
+                    return idx
+                end
             end
             current = current.Parent
         end
